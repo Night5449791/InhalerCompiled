@@ -2968,7 +2968,7 @@ run(function()
 		return (lastFling[a.Player.Name] or 0) < (lastFling[b.Player.Name] or 0)
 	end
 	
-	local function getTarget(seat)
+	local function getTarget(seat, now)
 		local cached = tempList[seat]
 		if cached then
 			local humanoid = cached.Humanoid
@@ -2977,34 +2977,41 @@ run(function()
 			end
 		end
 	
-		if entitylib.isAlive then
-			table.clear(sortedList)
-			for _, entity in entitylib.List do
-				table.insert(sortedList, entity)
-			end
-			table.sort(sortedList, sortFling)
-	
-			local individual = Mode.Value ~= 'All'
-			local enabled = List.ListEnabled
-			local now = os.clock()
-	
-			for _, entity in sortedList do
-				if isFriend(entity.Player) then continue end
-				if not select(2, whitelist:get(entity.Player)) then continue end
-				if entity.Player.Team == teams.Neutral then continue end
-				if individual and not table.find(enabled, entity.Player.Name) then continue end
-				local humanoid = entity.Humanoid
-				if not (humanoid.Sit and humanoid.SeatPart.Anchored) and entity.RootPart:IsDescendantOf(workspace) and (now - entity.SpawnTime) > 2 then
-					lastFling[entity.Player.Name] = now
-					tempList[seat] = entity
-					table.clear(sortedList)
-					notif('KickExploit', 'Attempted fling: '..entity.Player.Name, 5)
-					return entity
-				end
-			end
-	
-			table.clear(sortedList)
+		if not entitylib.isAlive then
+			return
 		end
+	
+		local individual = Mode.Value ~= 'All'
+		local enabled = List.ListEnabled
+		table.clear(sortedList)
+	
+		for _, entity in entitylib.List do
+			if isFriend(entity.Player) then continue end
+			if not select(2, whitelist:get(entity.Player)) then continue end
+			if entity.Player.Team == teams.Neutral then continue end
+			if individual and not table.find(enabled, entity.Player.Name) then continue end
+			local humanoid = entity.Humanoid
+			if humanoid.Sit and humanoid.SeatPart.Anchored then continue end
+			if not entity.RootPart:IsDescendantOf(workspace) then continue end
+			if (now - entity.SpawnTime) <= 2 then continue end
+			table.insert(sortedList, entity)
+		end
+	
+		local target = sortedList[1]
+		if not target then
+			return
+		end
+	
+		if #sortedList > 1 then
+			table.sort(sortedList, sortFling)
+			target = sortedList[1]
+		end
+	
+		lastFling[target.Player.Name] = now
+		tempList[seat] = target
+		table.clear(sortedList)
+		notif('KickExploit', 'Attempted fling: '..target.Player.Name, 5)
+		return target
 	end
 	
 	local function clearEntity(entity)
@@ -3031,6 +3038,7 @@ run(function()
 				local reqTimer = os.clock()
 				local startTime = os.clock()
 				local dir = 0
+				local backpack
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
 	
@@ -3095,10 +3103,11 @@ run(function()
 					end
 	
 					local root = entitylib.character.RootPart
+					local rootPos = root.Position
 					local didMove
 	
 					for _, spawner in getSpawners() do
-						local offset = spawner.Position - root.Position
+						local offset = spawner.Position - rootPos
 						local mag = offset.Magnitude
 	
 						if mag < 15 and (didClick[spawner] or 0) < now then
@@ -3120,7 +3129,7 @@ run(function()
 						local spawnTime = entitylib.character.SpawnTime
 	
 						if Equipment.Enabled and (now - spawnTime) < 2 then
-							local backpack = lplr:FindFirstChildWhichIsA('Backpack')
+							backpack = backpack or lplr:FindFirstChildWhichIsA('Backpack')
 							local btool = backpack and backpack:FindFirstChildWhichIsA('Tool') or nil
 							local ltool = lplr.Character:FindFirstChildWhichIsA('Tool')
 	
@@ -3132,17 +3141,17 @@ run(function()
 							end
 						end
 	
-						root.CFrame = CFrame.new(Vector3.new(610 + dir, 98, 2494))
+						root.CFrame = CFrame.new(610 + dir, 98, 2494)
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
 					for _, seat in seats do
 						if isnetworkowner(seat) then
-							local target = getTarget(seat)
+							local target = getTarget(seat, now)
 							if target then
 								local targetPos = target.RootPart.Position
 								seat.AssemblyLinearVelocity = FLING_VELOCITY
-								seat.CFrame = CFrame.new(Vector3.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12))
+								seat.CFrame = CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
 								sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
 								sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
 	
