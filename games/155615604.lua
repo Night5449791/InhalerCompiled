@@ -2563,7 +2563,9 @@ run(function()
 	local random = Random.new()
 	
 	local lines = {
-		'skill issue | kicked <obj>',
+		'prison life moment | kicked <obj>',
+		'do you also want an antifling? | kicked <obj>',
+		'i wonder why you got kicked | kicked <obj>',
 	}
 	
 	local function sendMessage(obj)
