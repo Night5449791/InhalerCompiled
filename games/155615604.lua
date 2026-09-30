@@ -3807,7 +3807,7 @@ run(function()
 							end
 						end
 	
-						root.CFrame = CFrame.new(633 + dir, 98, 2494)
+						root.CFrame = CFrame.new(610 + dir, 98, 2494)
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
