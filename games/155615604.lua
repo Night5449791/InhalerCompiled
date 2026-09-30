@@ -2590,10 +2590,13 @@ run(function()
 	local options = {}
 	local teamAliases = {
 		g = 'Guards',
+		guard = 'Guards',
 		guards = 'Guards',
 		i = 'Inmates',
+		inmate = 'Inmates',
 		inmates = 'Inmates',
 		c = 'Criminals',
+		criminal = 'Criminals',
 		criminals = 'Criminals'
 	}
 	local teamsService = cloneref(game:GetService('Teams'))
@@ -2963,24 +2966,27 @@ run(function()
 		end
 	end
 	
-	local kickTeam
+	local function addTarget(name, enabled)
+		setKickTarget(name, enabled)
+		setListValue(vape.Categories.Targets, name, enabled)
+	end
+	
+	local kickTeams = {}
 	local kickTeamMembers = {}
 	
 	local function addKickTeamMember(plr)
-		if not kickTeam or not plr or plr.Team ~= kickTeam then return end
+		if not plr or not next(kickTeams) or not plr.Team or not table.find(kickTeams, plr.Team) then return end
 		if table.find(kickTeamMembers, plr.Name) then return end
 	
 		table.insert(kickTeamMembers, plr.Name)
-		setKickTarget(plr.Name, true)
-		setListValue(vape.Categories.Targets, plr.Name, true)
+		addTarget(plr.Name, true)
 	end
 	
 	local function stopKickTeam()
-		kickTeam = nil
+		table.clear(kickTeams)
 	
 		for _, name in kickTeamMembers do
-			setKickTarget(name, false)
-			setListValue(vape.Categories.Targets, name, false)
+			addTarget(name, false)
 		end
 	
 		table.clear(kickTeamMembers)
@@ -3040,8 +3046,7 @@ run(function()
 			return
 		end
 	
-		setKickTarget(player.Name, true)
-		setListValue(vape.Categories.Targets, player.Name, true)
+		addTarget(player.Name, true)
 		startKick('Individual', 'Flinging '..player.Name..'.')
 	end
 	
@@ -3053,19 +3058,31 @@ run(function()
 			return
 		end
 	
-		local team = findTeam(args and args:match('^%S+$'))
-		if not team then
-			notif('KickExploit', 'No team found. (c/i/g)', 5, 'warning')
+		local wanted = {}
+		for token in (args or ''):gmatch('%S+') do
+			local team = findTeam(token)
+			if team and not table.find(wanted, team) then
+				table.insert(wanted, team)
+			end
+		end
+	
+		if not next(wanted) then
+			notif('KickExploit', 'No team found. (c/i/g, criminals/inmates/guards)', 5, 'warning')
 			return
 		end
 	
 		stopKickTeam()
-		kickTeam = team
-		for _, plr in team:GetPlayers() do
-			addKickTeamMember(plr)
+		local names = {}
+		for _, team in wanted do
+			table.insert(kickTeams, team)
+			table.insert(names, team.Name)
+	
+			for _, plr in team:GetPlayers() do
+				addKickTeamMember(plr)
+			end
 		end
 	
-		startKick('Individual', 'Flinging '..team.Name..'.')
+		startKick('Individual', 'Flinging '..table.concat(names, ', ')..'.')
 	end
 	
 	-- Movement / camera commands
@@ -3121,7 +3138,7 @@ run(function()
 		{Name = 'ChangeTeam', Tooltip = '.team <name>'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g>'}
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>'}
 	}
 	
 	local function handleView(args)
