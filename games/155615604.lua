@@ -2493,23 +2493,67 @@ end)
 run(function()
 	local AutoTeam
 	
+	local function requestTeam(team)
+		local remotes = replicatedStorage:FindFirstChild('Remotes')
+		local remote = remotes and remotes:FindFirstChild('RequestTeamChange')
+		if remote and team and lplr.Team ~= team then
+			remote:InvokeServer(team, 1)
+		end
+	end
+	
+	local function findTeamButton(teamName)
+		local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
+		if not gui then return end
+	
+		local lowered = teamName and teamName:lower()
+		for _, holder in gui:GetChildren() do
+			local button = holder:FindFirstChild('Button')
+			if not (button and button.AutoButtonColor) then continue end
+			if not lowered or holder.Name:lower():find(lowered, 1, true) then
+				return button
+			end
+		end
+	end
+	
+	local function onDied()
+		requestTeam(teams:FindFirstChild('Neutral'))
+		AutoTeam:Join()
+	end
+	
 	AutoTeam = vape.Categories.Utility:CreateModule({
 		Name = 'AutoTeam',
 		Function = function(callback)
 			if callback then
-				local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-				if gui then
-					for _, holder in gui:GetChildren() do
-						if holder.Button.AutoButtonColor then
-							pickTeam(holder.Button)
-							break
-						end
-					end
+				if entitylib.isAlive then
+					AutoTeam:Clean(entitylib.character.Humanoid.Died:Connect(onDied))
 				end
+	
+				AutoTeam:Clean(entitylib.Events.LocalAdded:Connect(function(entity)
+					AutoTeam:Clean(entity.Humanoid.Died:Connect(onDied))
+				end))
+	
+				AutoTeam:Join()
 			end
 		end,
 		Tooltip = 'Automatically join a team when joining the server'
 	})
+	
+	function AutoTeam:Join(teamName)
+		local button = findTeamButton(teamName)
+		if button then
+			pickTeam(button)
+			return true
+		end
+	
+		local team = teamName and teams:FindFirstChild(teamName)
+		if team then
+			requestTeam(team)
+			return true
+		end
+	
+		return false
+	end
+	
 end)
 
 run(function()
@@ -2617,8 +2661,8 @@ run(function()
 	
 	local function getLocalHumanoid()
 		local character = lplr.Character
-		return character and character:FindFirstChildOfClass('Humanoid')
-			or (entitylib.character and entitylib.character.Humanoid)
+		local humanoid = character and character:FindFirstChildOfClass('Humanoid')
+		return humanoid or (entitylib.character and entitylib.character.Humanoid)
 	end
 	
 	-- Lists
@@ -2669,17 +2713,20 @@ run(function()
 		local partial
 	
 		for _, entity in entitylib.List do
-			if entity.Humanoid and (includeDead or entity.Humanoid.Health > 0) then
-				local player = entity.Player
-				if player then
-					if player.Name:lower() == lowered then
-						return entity
-					end
+			local humanoid = entity.Humanoid
+			if not humanoid or (not includeDead and humanoid.Health <= 0) then continue end
 	
-					if not partial and (player.Name:lower():sub(1, length) == lowered or player.DisplayName:lower():sub(1, length) == lowered) then
-						partial = entity
-					end
-				end
+			local player = entity.Player
+			if not player then continue end
+	
+			local name = player.Name:lower()
+			local display = player.DisplayName:lower()
+			if name == lowered or display == lowered then
+				return entity
+			end
+	
+			if not partial and (name:sub(1, length) == lowered or display:sub(1, length) == lowered) then
+				partial = entity
 			end
 		end
 	
@@ -2687,9 +2734,6 @@ run(function()
 	end
 	
 	local function findPlayer(prefix, allowLeft)
-		prefix = trim(prefix)
-		if not prefix or prefix == '' then return end
-	
 		local entity = findEntity(prefix, true)
 		if entity then
 			return entity.Player
@@ -2697,16 +2741,21 @@ run(function()
 	
 		if not allowLeft then return end
 	
+		prefix = trim(prefix)
+		if not prefix or prefix == '' then return end
+	
 		local lowered = prefix:lower()
 		local length = #lowered
 		local partial
 	
 		for _, plr in playersService:GetPlayers() do
-			if plr.Name:lower() == lowered or plr.DisplayName:lower() == lowered then
+			local name = plr.Name:lower()
+			local display = plr.DisplayName:lower()
+			if name == lowered or display == lowered then
 				return plr
 			end
 	
-			if not partial and (plr.Name:lower():sub(1, length) == lowered or plr.DisplayName:lower():sub(1, length) == lowered) then
+			if not partial and (name:sub(1, length) == lowered or display:sub(1, length) == lowered) then
 				partial = plr
 			end
 		end
@@ -2787,46 +2836,23 @@ run(function()
 	
 	-- Team switching
 	
-	local function clickTeamButton(teamName)
-		local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-		if not gui then return false end
-	
-		local lowered = teamName:lower()
-		for _, holder in gui:GetChildren() do
-			local button = holder:FindFirstChild('Button')
-			if button and button.AutoButtonColor then
-				local text = (holder.Name..' '..button.Text):lower()
-				for _, label in holder:GetDescendants() do
-					if label:IsA('TextLabel') or label:IsA('TextButton') then
-						text = text..' '..label.Text:lower()
-					end
-				end
-	
-				if text:find(lowered, 1, true) then
-					firesignal(button.MouseButton1Click)
-					return true
-				end
-			end
-		end
-	
-		return false
-	end
-	
 	local function findTeam(name)
 		name = trim(name)
 		if not name or name == '' then return end
 	
-		local team = teamsService:FindFirstChild(teamAliases[name:lower()] or name)
+		local lowered = name:lower()
+		local team = teamsService:FindFirstChild(teamAliases[lowered] or name)
 		if team then
 			return team
 		end
 	
-		local lowered = name:lower()
 		for _, child in teamsService:GetChildren() do
 			if child.Name:lower():sub(1, #lowered) == lowered then
 				return child
 			end
 		end
+	
+		return nil
 	end
 	
 	local function handleTeam(args)
@@ -2835,20 +2861,13 @@ run(function()
 		local targetTeam = findTeam(args and args:match('^%S+$'))
 		if not targetTeam then return end
 	
-		ChatCommand:Clean(task.spawn(function()
-			local remotes = replicatedStorage:FindFirstChild('Remotes')
-			local requestTeamChange = remotes and remotes:FindFirstChild('RequestTeamChange')
-			local neutral = teamsService:FindFirstChild('Neutral')
+		local autoTeam = vape.Modules.AutoTeam
+		if autoTeam and autoTeam.Join then
+			autoTeam:Join(targetTeam.Name)
+			return
+		end
 	
-			if lplr.Team ~= neutral and neutral and requestTeamChange then
-				requestTeamChange:InvokeServer(neutral, 1)
-				task.wait(1.5)
-			end
-	
-			if not clickTeamButton(targetTeam.Name) and requestTeamChange then
-				requestTeamChange:InvokeServer(targetTeam, 1)
-			end
-		end))
+		notif('ChatCommand', 'AutoTeam is not available in this game.', 5, 'warning')
 	end
 	
 	-- Reload / servers
@@ -3168,47 +3187,58 @@ run(function()
 		notif('ChatCommand', #enabled > 0 and table.concat(enabled, '\n') or 'No commands enabled.', 8)
 	end
 	
+	local commands = {
+		help = handleHelp,
+		tp = handleTP,
+		follow = handleFollow,
+		unfollow = handleUnfollow,
+		view = handleView,
+		unview = restoreCamera,
+		wl = function(args)
+			handleWhitelist(args, false)
+		end,
+		whitelist = function(args)
+			handleWhitelist(args, false)
+		end,
+		unwl = function(args)
+			handleWhitelist(args, true)
+		end,
+		unwhitelist = function(args)
+			handleWhitelist(args, true)
+		end,
+		target = function(args)
+			handleTargets(args, false)
+		end,
+		blacklist = function(args)
+			handleTargets(args, false)
+		end,
+		untarget = function(args)
+			handleTargets(args, true)
+		end,
+		unblacklist = function(args)
+			handleTargets(args, true)
+		end,
+		kick = handleKick,
+		kickteam = handleKickTeam,
+		team = handleTeam,
+		hop = handleHop,
+		serverhop = handleHop,
+		rj = handleRejoin,
+		rejoin = handleRejoin,
+		reload = handleReload
+	}
+	
 	local function onChatted(message)
 		message = trim(message)
 		if message:sub(1, 1) ~= '.' then return end
 	
 		local command, args = message:sub(2):match('^(%S+)%s*(.*)$')
 		command = command and command:lower()
-		args = args ~= '' and args or nil
 		if not command then return end
 	
-		if command == 'help' then
-			handleHelp()
-		elseif command == 'tp' then
-			handleTP(args)
-		elseif command == 'follow' then
-			handleFollow(args)
-		elseif command == 'unfollow' then
-			handleUnfollow()
-		elseif command == 'view' then
-			handleView(args)
-		elseif command == 'unview' then
-			restoreCamera()
-		elseif command == 'wl' or command == 'whitelist' then
-			handleWhitelist(args, false)
-		elseif command == 'unwl' or command == 'unwhitelist' then
-			handleWhitelist(args, true)
-		elseif command == 'target' or command == 'blacklist' then
-			handleTargets(args, false)
-		elseif command == 'untarget' or command == 'unblacklist' then
-			handleTargets(args, true)
-		elseif command == 'kick' then
-			handleKick(args)
-		elseif command == 'kickteam' then
-			handleKickTeam(args)
-		elseif command == 'team' then
-			handleTeam(args)
-		elseif command == 'hop' or command == 'serverhop' then
-			handleHop()
-		elseif command == 'rj' or command == 'rejoin' then
-			handleRejoin()
-		elseif command == 'reload' then
-			handleReload()
+		local handler = commands[command]
+		if handler then
+			handler(args ~= '' and args or nil)
 		end
 	end
 	
@@ -3549,7 +3579,8 @@ run(function()
 	local seats = {}
 	local spawners = {}
 	local teamButtons = {}
-	local sortedList = {}
+	local candidateList = {}
+	local candidateTime = 0
 	local didClick = {}
 	local lastFling = {}
 	local tempList = setmetatable({}, {
@@ -3561,11 +3592,15 @@ run(function()
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
 	local FLING_VELOCITY = Vector3.new(10000, 0, 10000)
 	
+	local seatsDirty = false
+	
 	local function refreshSeats()
 		table.clear(seats)
 		for _, seat in workspace.CarContainer:QueryDescendants('VehicleSeat') do
 			table.insert(seats, seat)
 		end
+	
+		seatsDirty = false
 	end
 	
 	local function getSpawners()
@@ -3643,35 +3678,37 @@ run(function()
 			return
 		end
 	
-		local individual = Mode.Value ~= 'All'
-		local enabled = List.ListEnabled
-		table.clear(sortedList)
+		if candidateTime ~= now then
+			candidateTime = now
+			table.clear(candidateList)
 	
-		for _, entity in entitylib.List do
-			if isFriend(entity.Player) then continue end
-			if not select(2, whitelist:get(entity.Player)) then continue end
-			if entity.Player.Team == teams.Neutral then continue end
-			if individual and not table.find(enabled, entity.Player.Name) then continue end
-			local humanoid = entity.Humanoid
-			if humanoid.Sit and humanoid.SeatPart.Anchored then continue end
-			if not entity.RootPart:IsDescendantOf(workspace) then continue end
-			if (now - entity.SpawnTime) <= 2 then continue end
-			table.insert(sortedList, entity)
+			local individual = Mode.Value ~= 'All'
+			local enabled = List.ListEnabled
+			for _, entity in entitylib.List do
+				if isFriend(entity.Player) then continue end
+				if not select(2, whitelist:get(entity.Player)) then continue end
+				if entity.Player.Team == teams.Neutral then continue end
+				if individual and not table.find(enabled, entity.Player.Name) then continue end
+				local humanoid = entity.Humanoid
+				if humanoid.Sit and humanoid.SeatPart.Anchored then continue end
+				if not entity.RootPart:IsDescendantOf(workspace) then continue end
+				if (now - entity.SpawnTime) <= 2 then continue end
+				table.insert(candidateList, entity)
+			end
+	
+			if #candidateList > 1 then
+				table.sort(candidateList, sortFling)
+			end
 		end
 	
-		local target = sortedList[1]
+		local target = candidateList[1]
 		if not target then
 			return
 		end
 	
-		if #sortedList > 1 then
-			table.sort(sortedList, sortFling)
-			target = sortedList[1]
-		end
-	
+		table.remove(candidateList, 1)
 		lastFling[target.Player.Name] = now
 		tempList[seat] = target
-		table.clear(sortedList)
 		notif('KickExploit', 'Attempted fling: '..target.Player.Name, 5)
 		return target
 	end
@@ -3692,9 +3729,14 @@ run(function()
 			end
 		end
 	
-		if table.find(List.List, plr.Name) then
-			List:ChangeValue(plr.Name)
-			notif('KickExploit', plr.DisplayName..' left, removed from targets.', 5)
+		if not table.find(List.List, plr.Name) then return end
+	
+		List:ChangeValue(plr.Name)
+		notif('KickExploit', plr.DisplayName..' left, removed from targets.', 5)
+	
+		if KickExploit.Enabled and Mode.Value == 'Individual' and not next(List.ListEnabled) then
+			notif('KickExploit', 'No targets left, disabling.', 5)
+			KickExploit:Toggle()
 		end
 	end
 	
@@ -3726,28 +3768,39 @@ run(function()
 					end
 				end
 	
+				local countTimer = 0
+				local teamTimer = 0
+				local playerCount = AutoRejoin.Enabled and getPlayerCount() or 0
+	
 				refreshSeats()
 				KickExploit:Clean(workspace.CarContainer.DescendantAdded:Connect(function(obj)
 					if obj:IsA('VehicleSeat') then
-						refreshSeats()
+						seatsDirty = true
 					end
 				end))
 				KickExploit:Clean(workspace.CarContainer.DescendantRemoving:Connect(function(obj)
 					if obj:IsA('VehicleSeat') then
-						refreshSeats()
+						seatsDirty = true
 					end
 				end))
 				KickExploit:Clean(entitylib.Events.EntityRemoved:Connect(clearEntity))
-				KickExploit:Clean(playersService.PlayerRemoving:Connect(clearPlayer))
 	
 				KickExploit:Clean(runService.Heartbeat:Connect(function(dt)
 					local now = os.clock()
 	
+					if seatsDirty then
+						refreshSeats()
+					end
+	
 					if lplr.Team == teams.Neutral then
-						for _, holder in getTeamButtons() do
-							if holder.Button.AutoButtonColor then
-								pickTeam(holder.Button)
-								break
+						if (now - teamTimer) > 0.25 then
+							teamTimer = now
+	
+							for _, holder in getTeamButtons() do
+								if holder.Button.AutoButtonColor then
+									pickTeam(holder.Button)
+									break
+								end
 							end
 						end
 	
@@ -3755,7 +3808,12 @@ run(function()
 					end
 	
 					if AutoRejoin.Enabled then
-						if ((now - startTime) > TimeLimit.Value * 60 or getPlayerCount() <= PlayerLimit.Value) then
+						if (now - countTimer) > 0.5 then
+							countTimer = now
+							playerCount = getPlayerCount()
+						end
+	
+						if ((now - startTime) > TimeLimit.Value * 60 or playerCount <= PlayerLimit.Value) then
 							if (now - reqTimer) > 1 then
 								serverHop:Toggle()
 								reqTimer = now
@@ -3812,15 +3870,22 @@ run(function()
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
+					if Mode.Value == 'Individual' and not next(List.ListEnabled) then
+						notif('KickExploit', 'No targets left, disabling.', 5)
+						KickExploit:Toggle()
+						return
+					end
+	
 					for _, seat in seats do
 						if isnetworkowner(seat) then
 							local target = getTarget(seat, now)
 							if target then
-								local targetPos = target.RootPart.Position
+								local part = target.Head or target.RootPart
+								local targetPos = part.Position
 								seat.AssemblyLinearVelocity = FLING_VELOCITY
 								seat.CFrame = CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
-								sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
-								sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
+								sethiddenproperty(seat, 'PhysicsRepRootPart', part)
+								sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
 								local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
 								if wheels then
@@ -3898,6 +3963,7 @@ run(function()
 		Visible = false,
 		Darker = true
 	})
+	vape:Clean(playersService.PlayerRemoving:Connect(clearPlayer))
 end)
 
 run(function()

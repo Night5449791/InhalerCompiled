@@ -7127,8 +7127,8 @@ run(function()
 	
 	local function getLocalHumanoid()
 		local character = lplr.Character
-		return character and character:FindFirstChildOfClass('Humanoid')
-			or (entitylib.character and entitylib.character.Humanoid)
+		local humanoid = character and character:FindFirstChildOfClass('Humanoid')
+		return humanoid or (entitylib.character and entitylib.character.Humanoid)
 	end
 	
 	-- Lists
@@ -7179,17 +7179,20 @@ run(function()
 		local partial
 	
 		for _, entity in entitylib.List do
-			if entity.Humanoid and (includeDead or entity.Humanoid.Health > 0) then
-				local player = entity.Player
-				if player then
-					if player.Name:lower() == lowered then
-						return entity
-					end
+			local humanoid = entity.Humanoid
+			if not humanoid or (not includeDead and humanoid.Health <= 0) then continue end
 	
-					if not partial and (player.Name:lower():sub(1, length) == lowered or player.DisplayName:lower():sub(1, length) == lowered) then
-						partial = entity
-					end
-				end
+			local player = entity.Player
+			if not player then continue end
+	
+			local name = player.Name:lower()
+			local display = player.DisplayName:lower()
+			if name == lowered or display == lowered then
+				return entity
+			end
+	
+			if not partial and (name:sub(1, length) == lowered or display:sub(1, length) == lowered) then
+				partial = entity
 			end
 		end
 	
@@ -7197,9 +7200,6 @@ run(function()
 	end
 	
 	local function findPlayer(prefix, allowLeft)
-		prefix = trim(prefix)
-		if not prefix or prefix == '' then return end
-	
 		local entity = findEntity(prefix, true)
 		if entity then
 			return entity.Player
@@ -7207,16 +7207,21 @@ run(function()
 	
 		if not allowLeft then return end
 	
+		prefix = trim(prefix)
+		if not prefix or prefix == '' then return end
+	
 		local lowered = prefix:lower()
 		local length = #lowered
 		local partial
 	
 		for _, plr in playersService:GetPlayers() do
-			if plr.Name:lower() == lowered or plr.DisplayName:lower() == lowered then
+			local name = plr.Name:lower()
+			local display = plr.DisplayName:lower()
+			if name == lowered or display == lowered then
 				return plr
 			end
 	
-			if not partial and (plr.Name:lower():sub(1, length) == lowered or plr.DisplayName:lower():sub(1, length) == lowered) then
+			if not partial and (name:sub(1, length) == lowered or display:sub(1, length) == lowered) then
 				partial = plr
 			end
 		end
@@ -7456,41 +7461,55 @@ run(function()
 		notif('ChatCommand', #enabled > 0 and table.concat(enabled, '\n') or 'No commands enabled.', 8)
 	end
 	
+	local commands = {
+		help = handleHelp,
+		tp = handleTP,
+		follow = handleFollow,
+		unfollow = handleUnfollow,
+		view = handleView,
+		unview = restoreCamera,
+		wl = function(args)
+			handleWhitelist(args, false)
+		end,
+		whitelist = function(args)
+			handleWhitelist(args, false)
+		end,
+		unwl = function(args)
+			handleWhitelist(args, true)
+		end,
+		unwhitelist = function(args)
+			handleWhitelist(args, true)
+		end,
+		target = function(args)
+			handleTargets(args, false)
+		end,
+		blacklist = function(args)
+			handleTargets(args, false)
+		end,
+		untarget = function(args)
+			handleTargets(args, true)
+		end,
+		unblacklist = function(args)
+			handleTargets(args, true)
+		end,
+		hop = handleHop,
+		serverhop = handleHop,
+		rj = handleRejoin,
+		rejoin = handleRejoin,
+		reload = handleReload
+	}
+	
 	local function onChatted(message)
 		message = trim(message)
 		if message:sub(1, 1) ~= '.' then return end
 	
 		local command, args = message:sub(2):match('^(%S+)%s*(.*)$')
 		command = command and command:lower()
-		args = args ~= '' and args or nil
 		if not command then return end
 	
-		if command == 'help' then
-			handleHelp()
-		elseif command == 'tp' then
-			handleTP(args)
-		elseif command == 'follow' then
-			handleFollow(args)
-		elseif command == 'unfollow' then
-			handleUnfollow()
-		elseif command == 'view' then
-			handleView(args)
-		elseif command == 'unview' then
-			restoreCamera()
-		elseif command == 'wl' or command == 'whitelist' then
-			handleWhitelist(args, false)
-		elseif command == 'unwl' or command == 'unwhitelist' then
-			handleWhitelist(args, true)
-		elseif command == 'target' or command == 'blacklist' then
-			handleTargets(args, false)
-		elseif command == 'untarget' or command == 'unblacklist' then
-			handleTargets(args, true)
-		elseif command == 'hop' or command == 'serverhop' then
-			handleHop()
-		elseif command == 'rj' or command == 'rejoin' then
-			handleRejoin()
-		elseif command == 'reload' then
-			handleReload()
+		local handler = commands[command]
+		if handler then
+			handler(args ~= '' and args or nil)
 		end
 	end
 	
@@ -7520,106 +7539,6 @@ run(function()
 		})
 	end
 	
-end)
-
-run(function()
-	local ChatSpammer
-	local Lines
-	local Mode
-	local Delay
-	local Hide
-	local RandomList = {}
-	local oldchat
-	
-	ChatSpammer = vape.Categories.Utility:CreateModule({
-		Name = 'ChatSpammer',
-		Function = function(callback)
-			if callback then
-				if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-					if Hide.Enabled and coreGui:FindFirstChild('ExperienceChat') then
-						ChatSpammer:Clean(coreGui.ExperienceChat.appLayout.chatWindow.contentFrame.scrollingView.bottomLockedScrollView.scrollView.ChildAdded:Connect(function(msg)
-							if msg.Name:sub(1, 2) == '0-' and msg.TextMessage.BodyText.Text == '<font color="#d4d4d4">You must wait before sending another message.</font>' then
-								msg.Visible = false
-							end
-						end))
-					end
-				elseif replicatedStorage:FindFirstChild('DefaultChatSystemChatEvents') then
-					if Hide.Enabled then
-						oldchat = hookfunction(getconnections(replicatedStorage.DefaultChatSystemChatEvents.OnNewSystemMessage.OnClientEvent)[1].Function, function(data, ...)
-							if data.Message:find('ChatFloodDetector') then return end
-							return oldchat(data, ...)
-						end)
-					end
-				else
-					notif('ChatSpammer', 'unsupported chat', 5, 'warning')
-					ChatSpammer:Toggle()
-					return
-				end
-	
-				local index = 1
-				repeat
-					local message = 'vxpe on top'
-					if #Lines.ListEnabled > 0 then
-						if Mode.Value == 'Order' then
-							message = Lines.ListEnabled[index] or Lines.ListEnabled[1]
-							index = (index % #Lines.ListEnabled) + 1
-						else
-							if #RandomList <= 0 then
-								RandomList = table.clone(Lines.ListEnabled)
-							end
-	
-							local entry = Random.new():NextInteger(1, #RandomList)
-							message = RandomList[entry]
-							table.remove(RandomList, entry)
-						end
-					end
-	
-					if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-						textChatService.ChatInputBarConfiguration.TargetTextChannel:SendAsync(message)
-					else
-						replicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, 'All')
-					end
-	
-					task.wait(Delay.Value)
-				until not ChatSpammer.Enabled
-			else
-				if oldchat then
-					hookfunction(getconnections(replicatedStorage.DefaultChatSystemChatEvents.OnNewSystemMessage.OnClientEvent)[1].Function, oldchat)
-				end
-			end
-		end,
-		Tooltip = 'Automatically types in chat'
-	})
-	Lines = ChatSpammer:CreateTextList({
-		Name = 'Lines',
-		Function = function()
-			table.clear(RandomList)
-		end
-	})
-	Mode = ChatSpammer:CreateDropdown({
-		Name = 'Mode',
-		List = {'Random', 'Order'}
-	})
-	Delay = ChatSpammer:CreateSlider({
-		Name = 'Delay',
-		Min = 0.1,
-		Max = 10,
-		Default = 1,
-		Decimal = 10,
-		Suffix = function(val)
-			return val == 1 and 'second' or 'seconds'
-		end
-	})
-	Hide = ChatSpammer:CreateToggle({
-		Name = 'Hide Flood Message',
-		Default = true,
-		Function = function()
-			if ChatSpammer.Enabled then
-				ChatSpammer:Toggle()
-				ChatSpammer:Toggle()
-			end
-		end
-	})
 end)
 
 run(function()
