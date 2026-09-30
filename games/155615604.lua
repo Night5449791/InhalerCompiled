@@ -42,6 +42,7 @@ local aimTimer, shootTimer, aimVec = os.clock(), os.clock()
 local arrestCooldown = os.clock()
 local tempTargets = {}
 local gamepasses = {}
+local flatMask = Vector3.new(1, 0, 1)
 
 local function checkPoint(pos, params)
 	for _, part in workspace:GetPartBoundsInRadius(pos, 0, params) do
@@ -108,6 +109,7 @@ run(function()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
 	OriginScanner.Ray = rayParams
 
+	local normals = Enum.NormalId:GetEnumItems()
 	local positions = {
 		Vector3.new(0, 1, 0),
 		Vector3.new(1, 0, 0),
@@ -153,12 +155,13 @@ run(function()
 		end
 
 		local scanPositions = {origin}
-		local diff = CFrame.lookAt(origin * Vector3.new(1, 0, 1), target * Vector3.new(1, 0, 1)).LookVector
-		for _, normal in Enum.NormalId:GetEnumItems() do
+		local diff = CFrame.lookAt(origin * flatMask, target * flatMask).LookVector
+		local rootPosition = entity.RootPart.Position
+		for _, normal in normals do
 			local offset = Vector3.fromNormalId(normal)
 
-			if (offset * Vector3.new(1, 0, 1)):Dot(-diff) > -0.5 then
-				local pos = entity.RootPart.Position + offset * 7.4
+			if (offset * flatMask):Dot(-diff) > -0.5 then
+				local pos = rootPosition + offset * 7.4
 
 				if checkPoint(pos, overlapParams) then
 					table.insert(hitboxPositions, pos)
@@ -167,7 +170,7 @@ run(function()
 		end
 
 		for _, offset in positions do
-			if (offset * Vector3.new(1, 0, 1)):Dot(diff) > -0.5 then
+			if (offset * flatMask):Dot(diff) > -0.5 then
 				local pos = origin + offset * 6
 
 				if checkPoint(pos, overlapParams) then
@@ -278,17 +281,19 @@ run(function()
 		if entitylib.isAlive then
 			local mouseLocation, sortingTable = entitysettings.MouseOrigin or getMousePosition(), {}
 			local localPosition = entitysettings.Origin or entitylib.character.HumanoidRootPart.Position
+			local partName = entitysettings.Part
 			for _, entity in entitylib.List do
 				if not entitysettings.Players and entity.Player then continue end
 				if not entitysettings.NPCs and entity.NPC then continue end
 				if not entity.Targetable then continue end
-				local position, vis = gameCamera.WorldToViewportPoint(gameCamera, entity[entitysettings.Part].Position)
+				local part = entity[partName]
+				local position, vis = gameCamera.WorldToViewportPoint(gameCamera, part.Position)
 				if not vis then continue end
 				local mag = (mouseLocation - Vector2.new(position.x, position.y)).Magnitude
 				if mag > entitysettings.Range then continue end
 				if entitylib.isVulnerable(entity, entitysettings.AttackCheck) then
 					if entitysettings.RangePosition then
-						local pmag = (entity[entitysettings.Part].Position - localPosition).Magnitude
+						local pmag = (part.Position - localPosition).Magnitude
 						if pmag > entitysettings.RangePosition then continue end
 					end
 
@@ -305,7 +310,8 @@ run(function()
 
 			for _, v in sortingTable do
 				if entitysettings.Wallcheck then
-					if entitylib.Wallcheck(entitysettings.Origin, v.Entity[entitysettings.Part].Position, entitysettings.Wallbang, v.Entity[entitysettings.Part], v.Entity) then continue end
+					local part = v.Entity[partName]
+					if entitylib.Wallcheck(entitysettings.Origin, part.Position, entitysettings.Wallbang, part, v.Entity) then continue end
 				end
 				table.clear(entitysettings)
 				table.clear(sortingTable)
@@ -319,11 +325,12 @@ run(function()
 	entitylib.EntityPosition = function(entitysettings)
 		if entitylib.isAlive then
 			local localPosition, sortingTable = entitysettings.Origin or entitylib.character.HumanoidRootPart.Position, {}
+			local partName = entitysettings.Part
 			for _, entity in entitylib.List do
 				if not entitysettings.Players and entity.Player then continue end
 				if not entitysettings.NPCs and entity.NPC then continue end
 				if not entity.Targetable then continue end
-				local mag = (entity[entitysettings.Part].Position - localPosition).Magnitude
+				local mag = (entity[partName].Position - localPosition).Magnitude
 				if mag > entitysettings.Range then continue end
 				if entitylib.isVulnerable(entity, entitysettings.AttackCheck) then
 					table.insert(sortingTable, {
@@ -339,7 +346,8 @@ run(function()
 
 			for _, v in sortingTable do
 				if entitysettings.Wallcheck then
-					if entitylib.Wallcheck(localPosition, v.Entity[entitysettings.Part].Position, entitysettings.Wallbang, v.Entity[entitysettings.Part], v.Entity) then continue end
+					local part = v.Entity[partName]
+					if entitylib.Wallcheck(localPosition, part.Position, entitysettings.Wallbang, part, v.Entity) then continue end
 				end
 				table.clear(entitysettings)
 				table.clear(sortingTable)
@@ -354,11 +362,12 @@ run(function()
 		local returned = {}
 		if entitylib.isAlive then
 			local localPosition, sortingTable = entitysettings.Origin or entitylib.character.HumanoidRootPart.Position, {}
+			local partName = entitysettings.Part
 			for _, entity in entitylib.List do
 				if not entitysettings.Players and entity.Player then continue end
 				if not entitysettings.NPCs and entity.NPC then continue end
 				if not (entity.Targetable or entitysettings.SkipTeam and entitylib.targetCheck(entity, true)) then continue end
-				local mag = (entity[entitysettings.Part].Position - localPosition).Magnitude
+				local mag = (entity[partName].Position - localPosition).Magnitude
 				if mag > entitysettings.Range then continue end
 				if entitylib.isVulnerable(entity, entitysettings.AttackCheck, entitysettings.SkipTeam) then
 					table.insert(sortingTable, {
@@ -374,7 +383,8 @@ run(function()
 
 			for _, v in sortingTable do
 				if entitysettings.Wallcheck then
-					if entitylib.Wallcheck(localPosition, v.Entity[entitysettings.Part].Position, entitysettings.Wallbang, v.Entity[entitysettings.Part], v.Entity) then continue end
+					local part = v.Entity[partName]
+					if entitylib.Wallcheck(localPosition, part.Position, entitysettings.Wallbang, part, v.Entity) then continue end
 				end
 				table.insert(returned, v.Entity)
 				if #returned >= (entitysettings.Limit or math.huge) then break end
@@ -1071,13 +1081,13 @@ run(function()
 					posY = location.Y
 				end
 	
-				local hitPos
 				local rayPos = gameCamera:ViewportPointToRay(posX, posY)
 				local ray = workspace:Raycast(rayPos.Origin, rayPos.Direction * 1500, rayParams)
-				local vEntity
+				if not ray then return end
 	
+				local vEntity
 				for _, entity in entitylib.List do
-					if entity.Targetable and entity.Character and (Targets.Players.Enabled and entity.Player or Targets.NPCs.Enabled and entity.NPC) and entitylib.isVulnerable(entity, true) and ray.Instance:IsDescendantOf(entity.Character) then
+					if entity.Targetable and entity.Character and (Targets.Players.Enabled and entity.Player or Targets.NPCs.Enabled and entity.NPC) and ray.Instance:IsDescendantOf(entity.Character) and entitylib.isVulnerable(entity, true) then
 						vEntity = entity
 						break
 					end
@@ -1085,7 +1095,7 @@ run(function()
 	
 				if vEntity then
 					local origin = entitylib.character.Head.Position
-					local hitCheck = workspace:Raycast(origin, (ray.Position - origin), rayCheck)
+					local hitCheck = workspace:Raycast(origin, (ray.Position - origin), rayParams)
 	
 					if hitCheck and hitCheck.Instance:IsDescendantOf(vEntity.Character) and (ray.Position - origin).Magnitude <= data.Range then
 						return vEntity
@@ -1121,7 +1131,7 @@ end)
 run(function()
 	local AntiInvisible
 	local threads = {}
-	local whitelist = {
+	local allowedAnims = {
 		-- default roblox animations
 		['http://www.roblox.com/asset/?id=125750702'] = true,
 		['http://www.roblox.com/asset/?id=128777973'] = true,
@@ -1167,7 +1177,7 @@ run(function()
 	}
 	
 	local function AnimationAdded(anim, plr)
-		if not whitelist[anim.Animation.AnimationId] and plr then
+		if not allowedAnims[anim.Animation.AnimationId] and plr then
 			if threads[anim] then
 				task.cancel(threads[anim])
 			end
@@ -1199,7 +1209,7 @@ run(function()
 	end
 	
 	for _, v in replicatedStorage:QueryDescendants('Animation') do
-		whitelist[v.AnimationId] = true
+		allowedAnims[v.AnimationId] = true
 	end
 	
 	AntiInvisible = vape.Categories.Blatant:CreateModule({
@@ -1337,7 +1347,8 @@ run(function()
 		Function = function(callback)
 			if callback then
 				repeat
-					local check = arrestCooldown < os.clock()
+					local clock = os.clock()
+					local check = arrestCooldown < clock
 					if HandCheck.Enabled then
 						local tool = entitylib.isAlive and lplr.Character:FindFirstChildWhichIsA('Tool')
 						check = check and tool and tool.Name == 'Handcuffs'
@@ -1374,10 +1385,10 @@ run(function()
 					end
 	
 					if cdholder then
-						cdholder.Visible = arrestCooldown > os.clock()
+						cdholder.Visible = arrestCooldown > clock
 	
 						if cdholder.Visible then
-							local diff = (arrestCooldown - os.clock())
+							local diff = arrestCooldown - clock
 							cdframe.Size = UDim2.new(math.clamp(diff / 7, 0, 1), -2, 1, -2)
 							cdlabel.Text = (math.round(diff * 10) / 10)..'s'
 						end
@@ -1655,240 +1666,6 @@ run(function()
 end)
 
 run(function()
-	local Mode
-	local List
-	local Movement
-	local Equipment
-	local AutoRejoin
-	local PlayerLimit
-	local TimeLimit
-	local HopList
-	local didClick = {}
-	local lastFling = {}
-	local tempList = setmetatable({}, {
-		__mode = 'k'
-	})
-	
-	local function getTarget(seat)
-		if tempList[seat] and tempList[seat].RootPart:IsDescendantOf(workspace) and not (tempList[seat].Humanoid.Sit and tempList[seat].Humanoid.SeatPart.Anchored) then
-			return tempList[seat]
-		end
-	
-		if entitylib.isAlive then
-			local cloned = table.clone(entitylib.List)
-			table.sort(cloned, function(a, b)
-				return (lastFling[a.Player.Name] or 0) < (lastFling[b.Player.Name] or 0)
-			end)
-	
-			for _, entity in cloned do
-				if isFriend(entity.Player) then continue end
-				if not select(2, whitelist:get(entity.Player)) then continue end
-				if entity.Player.Team == teams.Neutral then continue end
-				if Mode.Value ~= 'All' and not table.find(List.ListEnabled, entity.Player.Name) then continue end
-				if not (entity.Humanoid.Sit and entity.Humanoid.SeatPart.Anchored) and entity.RootPart:IsDescendantOf(workspace) and (os.clock() - entity.SpawnTime) > 2 then
-					lastFling[entity.Player.Name] = os.clock()
-					tempList[seat] = entity
-					table.clear(cloned)
-					notif('KickExploit', 'Attempted fling: '..entity.Player.Name, 5)
-					return entity
-				end
-			end
-	
-			table.clear(cloned)
-		end
-	end
-	
-	KickExploit = vape.Categories.Blatant:CreateModule({
-		Name = 'KickExploit',
-		Function = function(callback)
-			if callback then
-				local reqTimer = os.clock()
-				local startTime = os.clock()
-				local dir = 0
-	
-				if not vape.Modules.AntiFling.Enabled then
-					vape.Modules.AntiFling:Toggle()
-				end
-	
-				if AutoRejoin.Enabled then
-					for _, plr in playersService:GetPlayers() do
-						if plr and plr.Team ~= teams.Neutral and table.find(HopList.ListEnabled, plr.Name) then
-							repeat
-								vape.Modules.ServerHop:Toggle()
-								task.wait(1)
-							until not KickExploit.Enabled
-	
-							return
-						end
-					end
-				end
-	
-				KickExploit:Clean(runService.Heartbeat:Connect(function(dt)
-					if lplr.Team == teams.Neutral then
-						local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-						if gui then
-							local buttons = gui:GetChildren()
-							table.sort(buttons, function(a, b)
-								return (a.Name == 'Inmates' and 1 or 2) < (b.Name == 'Inmates' and 1 or 2)
-							end)
-	
-							for _, holder in buttons do
-								if holder.Button.AutoButtonColor then
-									pickTeam(holder.Button)
-									break
-								end
-							end
-						end
-	
-						return
-					end
-	
-					if AutoRejoin.Enabled then
-						local plrCount = #teams.Guards:GetPlayers() + #teams.Inmates:GetPlayers() + #teams.Criminals:GetPlayers()
-	
-						if ((os.clock() - startTime) > TimeLimit.Value * 60 or plrCount <= PlayerLimit.Value) then
-							if (os.clock() - reqTimer) > 1 then
-								vape.Modules.ServerHop:Toggle()
-								reqTimer = os.clock()
-							end
-	
-							return
-						end
-					end
-	
-					if entitylib.isAlive then
-						local root = entitylib.character.RootPart
-						local didMove
-	
-						for _, button in workspace.Prison_ITEMS.buttons:GetChildren() do
-							if button.Name == 'Car Spawner' then
-								local mag = (button['Car Spawner'].Position - root.Position).Magnitude
-								if mag < 15 and (didClick[button] or 0) < os.clock() then
-									didClick[button] = os.clock() + 0.2
-									task.spawn(function()
-										replicatedStorage.Remotes.InteractWithItem:InvokeServer(button['Car Spawner'])
-									end)
-								end
-	
-								if mag < 50 and button['Car Spawner'].BrickColor == BrickColor.new('Cyan') and not didMove then
-									local diff = math.clamp((button['Car Spawner'].Position - root.Position).X, -1, 1)
-									dir = math.clamp(dir + (diff * dt * 24), -12, 14)
-									didMove = true
-								end
-							end
-						end
-	
-						if not didMove then
-							local diff = math.clamp(0 - dir, -1, 1)
-							dir = math.clamp(dir + (diff * dt * 24), -12, 14)
-						end
-	
-						if Movement.Enabled then
-							if Equipment.Enabled and (os.clock() - entitylib.character.SpawnTime) < 2 then
-								local backpack = lplr:FindFirstChildWhichIsA('Backpack')
-								local btool = backpack and backpack:FindFirstChildWhichIsA('Tool') or nil
-								local ltool = lplr.Character:FindFirstChildWhichIsA('Tool')
-	
-								if not (btool or ltool) then
-									root.CFrame = CFrame.new(Vector3.new(816, 98, 2233))
-									return
-								elseif btool and not ltool then
-									entitylib.character.Humanoid:EquipTool(btool)
-								end
-							end
-	
-							if (root.Position - Vector3.new(633, 98, 2489)).Magnitude < 40 or (os.clock() - entitylib.character.SpawnTime) < 2 then
-								root.CFrame = CFrame.new(Vector3.new(610 + dir, 90, 2494))
-								root.AssemblyLinearVelocity = Vector3.new(24, 0, 0)
-							end
-						end
-	
-						for _, seat in workspace.CarContainer:QueryDescendants('VehicleSeat') do
-							if isnetworkowner(seat) then
-								local target = getTarget(seat)
-								if target then
-									seat.AssemblyLinearVelocity = Vector3.new(10000, 10000, 0)
-									seat.CFrame = CFrame.new(target.RootPart.Position) * CFrame.new(-2, 0, -12)
-									sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
-									sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
-	
-									local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
-									if wheels then
-										wheels:Destroy()
-									end
-								end
-							end
-						end
-					end
-				end))
-			end
-		end,
-		Tooltip = 'aesthetical, just remove collisions on vehicles please, this is the worst.'
-	})
-	Mode = KickExploit:CreateDropdown({
-		Name = 'Mode',
-		List = {'All', 'Individual'},
-		Function = function(value)
-			List.Object.Visible = value ~= 'All'
-		end
-	})
-	List = KickExploit:CreateTextList({
-		Name = 'Targets',
-		Placeholder = 'Roblox username',
-		Player = true,
-		Visible = false,
-		Darker = true
-	})
-	Movement = KickExploit:CreateToggle({
-		Name = 'Movement',
-		Default = true
-	})
-	Equipment = KickExploit:CreateToggle({
-		Name = 'Equipment',
-		Tooltip = 'Grab a gun before kicking to kill seated players.'
-	})
-	AutoRejoin = KickExploit:CreateToggle({
-		Name = 'AutoRejoin',
-		Function = function(callback)
-			PlayerLimit.Object.Visible = callback
-			TimeLimit.Object.Visible = callback
-			HopList.Object.Visible = callback
-		end,
-		Tooltip = 'Automatically server hop after certain conditions are met.'
-	})
-	PlayerLimit = KickExploit:CreateSlider({
-		Name = 'Player Limit',
-		Min = 1,
-		Max = 24,
-		Default = 10,
-		Visible = false,
-		Darker = true,
-		Suffix = function(value)
-			return value == 1 and 'player' or 'players'
-		end
-	})
-	TimeLimit = KickExploit:CreateSlider({
-		Name = 'Time Limit',
-		Min = 1,
-		Max = 20,
-		Default = 6,
-		Visible = false,
-		Darker = true,
-		Suffix = function(value)
-			return value == 1 and 'minute' or 'minutes'
-		end
-	})
-	HopList = KickExploit:CreateTextList({
-		Name = 'Hop List',
-		Placeholder = 'Roblox username',
-		Tooltip = 'Automatically hop if the player is spawned in and in the server, good for multiboxing.',
-		Player = true,
-		Visible = false,
-		Darker = true
-	})
-end)
-
-run(function()
 	local Killaura
 	local Targets
 	local AttackRange
@@ -1936,15 +1713,12 @@ run(function()
 	
 						if #entities > 0 then
 							local selfpos = entitylib.character.RootPart.Position
-							local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+							local localfacing = entitylib.character.RootPart.CFrame.LookVector * flatMask
+							local maxAngle = math.rad(AngleSlider.Value) / 2
 	
 							for _, entity in entities do
-								local delta = (entity.RootPart.Position - selfpos)
-								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
-								if angle > (math.rad(AngleSlider.Value) / 2) then continue end
-								if lplr.Team == teams.Guards and entity.Player.Team == teams.Inmates and not entity.Character:GetAttribute('Hostile') then
-									continue
-								end
+								local delta = (entity.RootPart.Position - selfpos) * flatMask
+								if math.acos(localfacing:Dot(delta.Unit)) > maxAngle then continue end
 	
 								targetinfo.Targets[entity] = tick() + 1
 								table.insert(attacked, {
@@ -1971,7 +1745,7 @@ run(function()
 					end
 	
 					if Face.Enabled and attacked[1] then
-						local vec = attacked[1].Entity.RootPart.Position * Vector3.new(1, 0, 1)
+						local vec = attacked[1].Entity.RootPart.Position * flatMask
 						entitylib.character.RootPart.CFrame = CFrame.lookAt(entitylib.character.RootPart.Position, Vector3.new(vec.X, entitylib.character.RootPart.Position.Y + 0.01, vec.Z))
 					end
 	
@@ -2239,6 +2013,7 @@ run(function()
 	local Mode
 	local Speed
 	local welds = {}
+	local hoverVelocity = Vector3.new(0, 2.25, 0)
 	local up, down = 0, 0
 	
 	VehicleFly = vape.Categories.Blatant:CreateModule({
@@ -2298,9 +2073,13 @@ run(function()
 							end
 	
 							if inCar then
-								root.AssemblyLinearVelocity = Vector3.new(0, 2.25, 0)
-								root.CFrame = CFrame.lookAlong(root.Position, gameCamera.CFrame.LookVector) + (entitylib.character.Humanoid.MoveDirection + Vector3.new(0, up + down, 0)) * Speed.Value * dt
-								gameCamera.CameraSubject = entitylib.character.Humanoid
+								local humanoid = entitylib.character.Humanoid
+								root.AssemblyLinearVelocity = hoverVelocity
+								root.CFrame = CFrame.lookAlong(root.Position, gameCamera.CFrame.LookVector) + (humanoid.MoveDirection + Vector3.new(0, up + down, 0)) * Speed.Value * dt
+	
+								if gameCamera.CameraSubject ~= humanoid then
+									gameCamera.CameraSubject = humanoid
+								end
 							end
 						elseif old then
 							for _, weld in welds do
@@ -2768,7 +2547,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				AutoToxic:Clean(vapeEvents.CheaterKicked.Event:Connect(function(plr)
-					sendMessage('Kicked', plr, 'skill issue cheat | <obj>')
+					sendMessage('Kicked', plr, 'skill issue | Kicked <obj>')
 				end))
 			end
 		end,
@@ -2856,33 +2635,34 @@ run(function()
 					positions[entity] = nil
 				end))
 	
-				local lastDelta = 0
 				repeat
+					local clock = os.clock()
+	
 					for _, entity in entitylib.List do
 						if entity.Health > 0 and entity.Player and not Cheats.Flagged[entity.Player.UserId] then
-							local playerPos = entity.RootPart.Position
+							local root = entity.RootPart
+							local humanoid = entity.Humanoid
+							local playerPos = root.Position
 	
 							if not checkPoint(entity.Head.Position, overlap) then
 								Cheats:Flag(entity.Player, 'phase/noclip', 20)
 							end
 	
-							if not whiteliststates[entity.Humanoid:GetState()] then
-								Cheats:Flag(entity.Player, 'invalid state '..entity.Humanoid:GetState().Name, 1)
+							local state = humanoid:GetState()
+							if not whiteliststates[state] then
+								Cheats:Flag(entity.Player, 'invalid state '..state.Name, 1)
 							end
 	
-							local velo = entity.RootPart.AssemblyLinearVelocity
-							if not entity.Humanoid.SeatPart then
-								if (velo * Vector3.new(1, 0, 1)).Magnitude > 26 then
-									if #workspace:GetPartBoundsInRadius(playerPos, 30, carOverlap) <= 0 then
-										Cheats:Flag(entity.Player, 'speed', 20)
-									end
+							local velo = root.AssemblyLinearVelocity
+							if not humanoid.SeatPart then
+								if (velo * flatMask).Magnitude > 26 and #workspace:GetPartBoundsInRadius(playerPos, 30, carOverlap) <= 0 then
+									Cheats:Flag(entity.Player, 'speed', 20)
 								end
 	
-								if positions[entity] then
-									if Teleport.Enabled and ((playerPos - positions[entity][1]) * Vector3.new(1, 0, 1)).Magnitude > 50 and #workspace:GetPartBoundsInRadius(playerPos, 30, carOverlap) <= 0 then
-										local canFlag = entity.Player.Team ~= teams.Inmates or (os.clock() - entity.SpawnTime) > 0.1
-	
-										if canFlag then
+								local last = positions[entity]
+								if last then
+									if Teleport.Enabled and ((playerPos - last[1]) * flatMask).Magnitude > 50 and #workspace:GetPartBoundsInRadius(playerPos, 30, carOverlap) <= 0 then
+										if entity.Player.Team ~= teams.Inmates or (clock - entity.SpawnTime) > 0.1 then
 											Cheats:Flag(entity.Player, 'teleport', 1)
 										end
 									end
@@ -2892,16 +2672,16 @@ run(function()
 									Cheats:Flag(entity.Player, 'highjump', 20)
 								end
 	
-								if not positions[entity] or (os.clock() - positions[entity][2]) > 0.2 then
-									positions[entity] = {playerPos, os.clock()}
+								if not last or (clock - last[2]) > 0.2 then
+									positions[entity] = {playerPos, clock}
 								end
 							else
-								positions[entity] = {playerPos, os.clock()}
+								positions[entity] = {playerPos, clock}
 							end
 						end
 					end
 	
-					lastDelta = task.wait(0.05)
+					task.wait(0.05)
 				until not CheatDetector.Enabled
 			else
 				table.clear(positions)
@@ -3096,173 +2876,46 @@ run(function()
 end)
 
 run(function()
-	local KickExploit
 	local Mode
 	local List
 	local Movement
+	local Equipment
 	local AutoRejoin
 	local PlayerLimit
 	local TimeLimit
-	local didClick = setmetatable({}, {
+	local HopList
+	local didClick = {}
+	local lastFling = {}
+	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
-	local lastFling = setmetatable({}, {
-		__mode = 'k'
-	})
-	local seatTargets = setmetatable({}, {
-		__mode = 'k'
-	})
-	local flingCache = setmetatable({}, {
-		__mode = 'k'
-	})
-	local flingResult = setmetatable({}, {
-		__mode = 'k'
-	})
-	local targetCache = {
-		time = 0,
-		list = {}
-	}
-	local seatCache = {
-		time = 0,
-		list = {}
-	}
-	local wheelsKilled = setmetatable({}, {
-		__mode = 'k'
-	})
-	local cyanColor = BrickColor.new('Cyan')
-	local teamNames = {'Guards', 'Inmates', 'Criminals'}
-	local neutralTeam = teams:FindFirstChild('Neutral')
-	local seatVelocity = Vector3.new(10000, 10000, 0)
-	local seatOffset = CFrame.new(-2, -2, -12)
-	local notifTimer = 0
-	local buttonCache = {
-		time = 0,
-		list = {}
-	}
-	local isnetworkowner = isnetworkowner or function()
-		return true
-	end
-	local sethiddenproperty = sethiddenproperty or set_hidden_property or set_hidden_prop
-	local enabledAntiFling = false
-	local interactRemote
 	
-	local function getInteractRemote()
-		if not interactRemote then
-			local remotes = replicatedStorage:FindFirstChild('Remotes')
-			interactRemote = remotes and remotes:FindFirstChild('InteractWithItem')
+	local function getTarget(seat)
+		if tempList[seat] and tempList[seat].RootPart:IsDescendantOf(workspace) and not (tempList[seat].Humanoid.Sit and tempList[seat].Humanoid.SeatPart.Anchored) then
+			return tempList[seat]
 		end
 	
-		return interactRemote
-	end
+		if entitylib.isAlive then
+			local cloned = table.clone(entitylib.List)
+			table.sort(cloned, function(a, b)
+				return (lastFling[a.Player.Name] or 0) < (lastFling[b.Player.Name] or 0)
+			end)
 	
-	local function clickPart(part)
-		local remote = getInteractRemote()
-		if remote then
-			remote:InvokeServer(part)
-		end
-	end
-	
-	local function getTeamPlayerCount()
-		local count = 0
-		for _, name in teamNames do
-			local team = teams:FindFirstChild(name)
-			if team then
-				count += #team:GetPlayers()
-			end
-		end
-	
-		return count
-	end
-	
-	local function canFling(entity, now)
-		local plr = entity.Player
-		if not plr then return false end
-	
-		local team = plr.Team
-		if not team or team == neutralTeam then return false end
-	
-		if Mode.Value ~= 'All' and not table.find(List.ListEnabled, plr.Name) then return false end
-	
-		local expiry = flingCache[plr]
-		if expiry and expiry > now then
-			return flingResult[plr]
-		end
-	
-		local result = select(2, whitelist:get(plr)) and not isFriend(plr)
-		flingCache[plr] = now + (result and 1 or 0.25)
-		flingResult[plr] = result
-		return result
-	end
-	
-	local function isFlingable(entity, now)
-		if not entity.Humanoid then return false end
-		if entity.Humanoid.Health <= 0 or entity.SpawnTime >= now or not entity.Character.Parent then
-			return false
-		end
-	
-		local seatPart = entity.Humanoid.SeatPart
-		return not (entity.Humanoid.Sit and seatPart and seatPart.Anchored)
-	end
-	
-	local function isTargetable(entity, now)
-		return isFlingable(entity, now) and canFling(entity, now)
-	end
-	
-	local function removeListedTargets(names)
-		if not List or #names == 0 then return end
-	
-		for _, name in names do
-			local index = table.find(List.List, name)
-			if index then
-				table.remove(List.List, index)
-			end
-	
-			index = table.find(List.ListEnabled, name)
-			if index then
-				table.remove(List.ListEnabled, index)
-			end
-		end
-	
-		List:ChangeValue()
-	end
-	
-	local function getTarget(seat, now)
-		local cached = seatTargets[seat]
-		if cached and cached.time > now and isTargetable(cached.entity, now) then
-			return cached.entity
-		end
-	
-		if not entitylib.isAlive then return end
-	
-		if targetCache.time < now then
-			targetCache.time = now + 0.1
-			table.clear(targetCache.list)
-			for _, entity in entitylib.List do
-				if canFling(entity, now) then
-					table.insert(targetCache.list, entity)
+			for _, entity in cloned do
+				if isFriend(entity.Player) then continue end
+				if not select(2, whitelist:get(entity.Player)) then continue end
+				if entity.Player.Team == teams.Neutral then continue end
+				if Mode.Value ~= 'All' and not table.find(List.ListEnabled, entity.Player.Name) then continue end
+				if not (entity.Humanoid.Sit and entity.Humanoid.SeatPart.Anchored) and entity.RootPart:IsDescendantOf(workspace) and (os.clock() - entity.SpawnTime) > 2 then
+					lastFling[entity.Player.Name] = os.clock()
+					tempList[seat] = entity
+					table.clear(cloned)
+					notif('KickExploit', 'Attempted fling: '..entity.Player.Name, 5)
+					return entity
 				end
 			end
-		end
 	
-		local best, bestTime
-		for _, entity in targetCache.list do
-			if isTargetable(entity, now) then
-				local flingTime = lastFling[entity.Player] or 0
-				if not best or flingTime < bestTime then
-					best, bestTime = entity, flingTime
-				end
-			end
-		end
-	
-		if best then
-			lastFling[best.Player] = now
-			seatTargets[seat] = {entity = best, time = now + 1}
-			if notifTimer < now then
-				notifTimer = now + 1
-				notif('KickExploit', 'Attempted fling: '..best.Player.Name, 5)
-			end
-	
-			return best
+			table.clear(cloned)
 		end
 	end
 	
@@ -3270,45 +2923,40 @@ run(function()
 		Name = 'KickExploit',
 		Function = function(callback)
 			if callback then
-				local antiFling = vape.Modules.AntiFling
-				enabledAntiFling = antiFling and not antiFling.Enabled
-				if enabledAntiFling then
-					antiFling:Toggle()
-				end
-	
 				local reqTimer = os.clock()
 				local startTime = os.clock()
-				local checkTimer = os.clock() + 3
-				local guiTimer = 0
-				local countTimer = 0
-				local plrCount = 0
-				local teamTimer = 0
 				local dir = 0
-				table.clear(didClick)
-				table.clear(seatTargets)
-				table.clear(buttonCache.list)
-				table.clear(targetCache.list)
-				table.clear(seatCache.list)
-				buttonCache.time, targetCache.time, seatCache.time = 0, 0, 0
+	
+				if not vape.Modules.AntiFling.Enabled then
+					vape.Modules.AntiFling:Toggle()
+				end
+	
+				if AutoRejoin.Enabled then
+					for _, plr in playersService:GetPlayers() do
+						if plr and plr.Team ~= teams.Neutral and table.find(HopList.ListEnabled, plr.Name) then
+							repeat
+								vape.Modules.ServerHop:Toggle()
+								task.wait(1)
+							until not KickExploit.Enabled
+	
+							return
+						end
+					end
+				end
+	
 				KickExploit:Clean(runService.Heartbeat:Connect(function(dt)
-					local now = os.clock()
+					if lplr.Team == teams.Neutral then
+						local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
+						if gui then
+							local buttons = gui:GetChildren()
+							table.sort(buttons, function(a, b)
+								return (a.Name == 'Inmates' and 1 or 2) < (b.Name == 'Inmates' and 1 or 2)
+							end)
 	
-					if lplr.Team == neutralTeam then
-						if guiTimer < now then
-							guiTimer = now + 0.5
-							local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-							if gui then
-								for _, holder in gui:GetChildren() do
-									local button = holder:FindFirstChild('Button')
-									if button and button.AutoButtonColor then
-										firesignal(button.MouseButton1Click)
-										break
-									end
-								end
-	
-								if teamTimer < now then
-									teamTimer = now + 5
-									notif('KickExploit', 'Join a team before flinging.', 5, 'warning')
+							for _, holder in buttons do
+								if holder.Button.AutoButtonColor then
+									pickTeam(holder.Button)
+									break
 								end
 							end
 						end
@@ -3317,50 +2965,14 @@ run(function()
 					end
 	
 					if AutoRejoin.Enabled then
-						if countTimer < now then
-							countTimer = now + 1
-							plrCount = getTeamPlayerCount()
-						end
+						local plrCount = #teams.Guards:GetPlayers() + #teams.Inmates:GetPlayers() + #teams.Criminals:GetPlayers()
 	
-						if ((now - startTime) > TimeLimit.Value * 60 or plrCount <= PlayerLimit.Value) then
-							local serverHop = vape.Modules.ServerHop
-							if serverHop and not serverHop.Enabled and (now - reqTimer) > 1 then
-								serverHop:Toggle()
-								reqTimer = now
+						if ((os.clock() - startTime) > TimeLimit.Value * 60 or plrCount <= PlayerLimit.Value) then
+							if (os.clock() - reqTimer) > 1 then
+								vape.Modules.ServerHop:Toggle()
+								reqTimer = os.clock()
 							end
 	
-							return
-						end
-					end
-	
-					if checkTimer < now then
-						checkTimer = now + 1
-	
-						if Mode.Value == 'Individual' then
-							local left = {}
-							for _, name in List.ListEnabled do
-								if not playersService:FindFirstChild(name) then
-									table.insert(left, name)
-								end
-							end
-	
-							if #left > 0 then
-								removeListedTargets(left)
-								notif('KickExploit', 'Removed '..table.concat(left, ', ')..' (left the server)', 5)
-							end
-						end
-	
-						local targetsLeft
-						if Mode.Value == 'Individual' then
-							targetsLeft = #List.ListEnabled > 0
-						else
-							targetsLeft = playersService.NumPlayers > 1
-						end
-	
-						if not targetsLeft and KickExploit.Enabled then
-							KickExploit:Toggle()
-							notif('KickExploit', 'No targets left in server', 5)
-							Mode:SetValue('All')
 							return
 						end
 					end
@@ -3369,36 +2981,21 @@ run(function()
 						local root = entitylib.character.RootPart
 						local didMove
 	
-						if buttonCache.time < now then
-							buttonCache.time = now + 1
-							table.clear(buttonCache.list)
-							local items = workspace:FindFirstChild('Prison_ITEMS')
-							local buttons = items and items:FindFirstChild('buttons')
-							if buttons then
-								for _, button in buttons:GetChildren() do
-									if button.Name == 'Car Spawner' then
-										local part = button:FindFirstChild('Car Spawner')
-										if part and part:IsA('BasePart') then
-											table.insert(buttonCache.list, part)
-										end
-									end
+						for _, button in workspace.Prison_ITEMS.buttons:GetChildren() do
+							if button.Name == 'Car Spawner' then
+								local mag = (button['Car Spawner'].Position - root.Position).Magnitude
+								if mag < 15 and (didClick[button] or 0) < os.clock() then
+									didClick[button] = os.clock() + 0.2
+									task.spawn(function()
+										replicatedStorage.Remotes.InteractWithItem:InvokeServer(button['Car Spawner'])
+									end)
 								end
-							end
-						end
 	
-						for _, part in buttonCache.list do
-							if not part.Parent then continue end
-	
-							local offset = part.Position - root.Position
-							local mag = offset.Magnitude
-							if mag < 15 and (didClick[part] or 0) < now then
-								didClick[part] = now + 0.2
-								task.spawn(clickPart, part)
-							end
-	
-							if mag < 50 and part.BrickColor == cyanColor and not didMove then
-								dir = math.clamp(dir + (math.clamp(offset.X, -1, 1) * dt * 24), -12, 14)
-								didMove = true
+								if mag < 50 and button['Car Spawner'].BrickColor == BrickColor.new('Cyan') and not didMove then
+									local diff = math.clamp((button['Car Spawner'].Position - root.Position).X, -1, 1)
+									dir = math.clamp(dir + (diff * dt * 24), -12, 14)
+									didMove = true
+								end
 							end
 						end
 	
@@ -3408,84 +3005,76 @@ run(function()
 						end
 	
 						if Movement.Enabled then
-							root.CFrame = CFrame.new(Vector3.new(610 + dir, 98, 2494))
-							root.AssemblyLinearVelocity = Vector3.zero
-						end
+							if Equipment.Enabled and (os.clock() - entitylib.character.SpawnTime) < 2 then
+								local backpack = lplr:FindFirstChildWhichIsA('Backpack')
+								local btool = backpack and backpack:FindFirstChildWhichIsA('Tool') or nil
+								local ltool = lplr.Character:FindFirstChildWhichIsA('Tool')
 	
-						if seatCache.time < now then
-							seatCache.time = now + 0.5
-							table.clear(seatCache.list)
-							local carContainer = workspace:FindFirstChild('CarContainer')
-							if carContainer then
-								for _, seat in carContainer:QueryDescendants('VehicleSeat') do
-									table.insert(seatCache.list, seat)
+								if not (btool or ltool) then
+									root.CFrame = CFrame.new(Vector3.new(816, 98, 2233))
+									return
+								elseif btool and not ltool then
+									entitylib.character.Humanoid:EquipTool(btool)
 								end
+							end
+	
+							if (root.Position - Vector3.new(633, 98, 2489)).Magnitude < 40 or (os.clock() - entitylib.character.SpawnTime) < 2 then
+								root.CFrame = CFrame.new(Vector3.new(610 + dir, 90, 2494))
+								root.AssemblyLinearVelocity = Vector3.new(24, 0, 0)
 							end
 						end
 	
-						for _, seat in seatCache.list do
-							local carModel = seat.Parent and seat.Parent.Parent
-							if carModel and isnetworkowner(seat) then
-								local target = getTarget(seat, now)
-								local targetRoot = target and target.RootPart
-								if targetRoot then
-									seat.AssemblyLinearVelocity = seatVelocity
-									seat.CFrame = CFrame.new(targetRoot.Position) * seatOffset
-									if sethiddenproperty then
-										sethiddenproperty(seat, 'PhysicsRepRootPart', targetRoot)
-									end
+						for _, seat in workspace.CarContainer:QueryDescendants('VehicleSeat') do
+							if isnetworkowner(seat) then
+								local target = getTarget(seat)
+								if target then
+									local flingOffset = Vector3.new(-2, 0, -12)
+									seat.AssemblyLinearVelocity = Vector3.new(10000, 0, 10000)
+									seat.CFrame = CFrame.new(target.RootPart.Position + flingOffset)
+									sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
+									sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
 	
-									if not wheelsKilled[carModel] then
-										local wheels = carModel:FindFirstChild('Wheels')
-										if wheels then
-											wheels:Destroy()
-										end
-										wheelsKilled[carModel] = true
+									local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
+									if wheels then
+										wheels:Destroy()
 									end
 								end
 							end
 						end
 					end
 				end))
-			else
-				table.clear(targetCache.list)
-				table.clear(seatCache.list)
-				table.clear(buttonCache.list)
-				table.clear(seatTargets)
-				table.clear(lastFling)
-				table.clear(didClick)
-				interactRemote = nil
-	
-				if enabledAntiFling then
-					enabledAntiFling = false
-					local antiFling = vape.Modules.AntiFling
-					if antiFling and antiFling.Enabled then
-						antiFling:Toggle()
-					end
-				end
 			end
 		end,
 		Tooltip = 'aesthetical, just remove collisions on vehicles please, this is the worst.'
 	})
 	Mode = KickExploit:CreateDropdown({
 		Name = 'Mode',
-		List = {'All', 'Individual'}
+		List = {'All', 'Individual'},
+		Function = function(value)
+			List.Object.Visible = value ~= 'All'
+		end
 	})
 	List = KickExploit:CreateTextList({
 		Name = 'Targets',
 		Placeholder = 'Roblox username',
 		Player = true,
+		Visible = false,
 		Darker = true
 	})
 	Movement = KickExploit:CreateToggle({
 		Name = 'Movement',
 		Default = true
 	})
+	Equipment = KickExploit:CreateToggle({
+		Name = 'Equipment',
+		Tooltip = 'Grab a gun before kicking to kill seated players.'
+	})
 	AutoRejoin = KickExploit:CreateToggle({
 		Name = 'AutoRejoin',
 		Function = function(callback)
 			PlayerLimit.Object.Visible = callback
 			TimeLimit.Object.Visible = callback
+			HopList.Object.Visible = callback
 		end,
 		Tooltip = 'Automatically server hop after certain conditions are met.'
 	})
@@ -3510,6 +3099,14 @@ run(function()
 		Suffix = function(value)
 			return value == 1 and 'minute' or 'minutes'
 		end
+	})
+	HopList = KickExploit:CreateTextList({
+		Name = 'Hop List',
+		Placeholder = 'Roblox username',
+		Tooltip = 'Automatically hop if the player is spawned in and in the server, good for multiboxing.',
+		Player = true,
+		Visible = false,
+		Darker = true
 	})
 end)
 
@@ -3800,6 +3397,9 @@ run(function()
 	
 				if DrawingToggle.Enabled then
 					BulletTracers:Clean(runService.RenderStepped:Connect(function()
+						local clock = os.clock()
+						local lifetime = Lifetime.Value
+	
 						for obj, data in drawingobjs do
 							local from, vis = gameCamera:WorldToViewportPoint(data[1])
 							local to, vis2 = gameCamera:WorldToViewportPoint(data[2])
@@ -3808,7 +3408,7 @@ run(function()
 								obj.From = Vector2.new(from.X, from.Y)
 								obj.To = Vector2.new(to.X, to.Y)
 								if Fade.Enabled then
-									obj.Transparency = Color.Opacity * (1 - math.clamp((os.clock() - data[3]) / Lifetime.Value, 0, 1))
+									obj.Transparency = Color.Opacity * (1 - math.clamp((clock - data[3]) / lifetime, 0, 1))
 								end
 							else
 								obj.Visible = false
@@ -4230,19 +3830,25 @@ run(function()
 	
 				Viewmodel:Clean(runService.RenderStepped:Connect(function(dt)
 					if handle then
-						moveSpring.Target = entitylib.isAlive and entitylib.character.RootPart.AssemblyLinearVelocity * 0.005 or Vector3.zero
+						local camCF = gameCamera.CFrame
+						local clock = os.clock()
+						local root = entitylib.isAlive and entitylib.character.RootPart
+						moveSpring.Target = root and root.AssemblyLinearVelocity * 0.005 or Vector3.zero
 	
 						if Sway.Enabled then
+							local swayTime = tick()
+	
 							if moveSpring.Target.Magnitude > 0.1 then
-								moveSpring.Target += (gameCamera.CFrame * CFrame.new(math.sin(tick() * 10) * 0.06, 0, 0)).Position - gameCamera.CFrame.Position
+								moveSpring.Target += (camCF * CFrame.new(math.sin(swayTime * 10) * 0.06, 0, 0)).Position - camCF.Position
 							else
-								moveSpring.Target += (gameCamera.CFrame * CFrame.new(0, math.sin(tick()) * 0.04, 0)).Position - gameCamera.CFrame.Position
+								moveSpring.Target += (camCF * CFrame.new(0, math.sin(swayTime) * 0.04, 0)).Position - camCF.Position
 							end
 						end
 	
-						local cf = (gameCamera.CFrame * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
-						aimSpring.Target = aimTimer > os.clock() and CFrame.lookAt(cf.Position, aimVec).LookVector or gameCamera.CFrame.LookVector
-						handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(math.max(shootTimer - os.clock(), 0) * 10), 0, 0) * CFrame.new(0, 0, math.max(shootTimer - os.clock(), 0)))
+						local cf = (camCF * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
+						local recoil = math.max(shootTimer - clock, 0)
+						aimSpring.Target = aimTimer > clock and CFrame.lookAt(cf.Position, aimVec).LookVector or camCF.LookVector
+						handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(recoil * 10), 0, 0) * CFrame.new(0, 0, recoil))
 						handle.AssemblyLinearVelocity = Vector3.zero
 					end
 				end))
