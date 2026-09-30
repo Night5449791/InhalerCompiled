@@ -3824,7 +3824,7 @@ run(function()
 							local target = getTarget(seat, now)
 							if target then
 								flung = true
-								local part = target.Head or target.RootPart
+								local part = Equipment.Enabled and (target.Head or target.RootPart) or target.RootPart
 								local targetPos = part.Position
 								seat.AssemblyLinearVelocity = FLING_VELOCITY
 								seat.CFrame = CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
