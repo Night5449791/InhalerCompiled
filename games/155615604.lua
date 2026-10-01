@@ -3610,6 +3610,7 @@ run(function()
 	local TimeLimit
 	local HopList
 	local HeadOffset
+	local KickMode
 	local seats = {}
 	local spawners = {}
 	local teamButtons = {}
@@ -3786,6 +3787,9 @@ run(function()
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
 	
+				KickMode.Object.Visible = Equipment.Enabled
+				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Headfling'
+	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
 				end
@@ -3914,18 +3918,20 @@ run(function()
 					end
 	
 					local owned, flung
+					local headfling = Equipment.Enabled and KickMode.Value == 'Headfling'
 					for _, seat in seats do
 						if isnetworkowner(seat) then
 							owned = true
 							local target = getTarget(seat, now)
 							if not target then continue end
+							if headfling and target.Humanoid.Health > 0 then continue end
 	
 							flung = true
-							local dead = target.Humanoid.Health <= 0
-							local part = dead and target.Head or target.RootPart
+							local part = headfling and target.Head or target.RootPart
 							local targetPos = part.Position
-							seat.AssemblyLinearVelocity = dead and HEAD_VELOCITY or FLING_VELOCITY
-							seat.CFrame = dead and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
+							local head = part == target.Head
+							seat.AssemblyLinearVelocity = head and HEAD_VELOCITY or FLING_VELOCITY
+							seat.CFrame = head and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
 							sethiddenproperty(seat, 'PhysicsRepRootPart', part)
 							sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
@@ -3968,14 +3974,28 @@ run(function()
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
+		Function = function(callback)
+			KickMode.Object.Visible = callback
+			HeadOffset.Object.Visible = callback and KickMode.Value == 'Headfling'
+		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
+	})
+	KickMode = KickExploit:CreateDropdown({
+		Name = 'Kick Mode',
+		List = {'Normal', 'Headfling'},
+		Function = function(val)
+			HeadOffset.Object.Visible = val == 'Headfling'
+		end,
+		Visible = false,
+		Darker = true
 	})
 	HeadOffset = KickExploit:CreateSlider({
 		Name = 'Head Offset',
 		Min = 0,
 		Max = 12,
 		Default = 1,
-		Tooltip = 'Distance behind the head used when flinging dead targets.',
+		Visible = false,
+		Darker = true,
 		Suffix = function(value)
 			return value == 1 and 'stud' or 'studs'
 		end
