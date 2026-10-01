@@ -1972,14 +1972,29 @@ run(function()
 		['Remington 870'] = Vector3.new(1, 2, 1.5),
 		['AK-47'] = Vector3.new(1, 2, 1.5)
 	}
+	local originalGrips = setmetatable({}, {
+		__mode = 'k'
+	})
 	
 	local function ApplyGrip(tool)
-		if tool:IsA('Tool') then
-			local grip = SpecialGrips[tool.Name] or DefaultGrip
-			if tool.GripPos ~= grip then
-				tool.GripPos = grip
-			end
+		if not tool:IsA('Tool') then return end
+	
+		local grip = SpecialGrips[tool.Name] or DefaultGrip
+		if tool.GripPos == grip then return end
+	
+		if originalGrips[tool] == nil then
+			originalGrips[tool] = tool.GripPos
 		end
+	
+		tool.GripPos = grip
+	end
+	
+	local function RestoreGrips()
+		for tool, grip in originalGrips do
+			tool.GripPos = grip
+		end
+	
+		table.clear(originalGrips)
 	end
 	
 	local function EntityAdded()
@@ -2002,10 +2017,13 @@ run(function()
 				if entitylib.isAlive then
 					task.spawn(EntityAdded)
 				end
+			else
+				RestoreGrips()
 			end
 		end,
 		Tooltip = 'applies tool grip pos'
 	})
+	
 end)
 
 run(function()
@@ -2569,6 +2587,8 @@ end)
 
 run(function()
 	local ChatCommand
+	local addTarget
+	local kickTargetList
 	
 	local options = {}
 	local teamAliases = {
@@ -2841,10 +2861,9 @@ run(function()
 	local function handleRejoin()
 		if not options.Rejoin.Enabled then return end
 	
-		if playersService.NumPlayers > 1 then
-			teleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId)
-		else
-			teleportService:Teleport(game.PlaceId)
+		local rejoin = vape.Modules.Rejoin
+		if rejoin and not rejoin.Enabled then
+			rejoin:Toggle()
 		end
 	end
 	
@@ -2864,7 +2883,7 @@ run(function()
 	end
 	
 	local function clearAllTargets()
-		local count = clearListValues(vape.Categories.Targets)
+		local count = clearListValues(vape.Categories.Targets) + clearListValues(kickTargetList())
 		notif('Blacklist', count > 0 and 'Cleared '..count..' target'..(count == 1 and '' or 's') or 'No targets to clear.', 5)
 	end
 	
@@ -2885,7 +2904,7 @@ run(function()
 			return
 		end
 	
-		setListValue(vape.Categories.Targets, player.Name, not remove)
+		addTarget(player.Name, not remove)
 		notif('Blacklist', player.DisplayName..' has been '..(remove and 'unblacklisted.' or 'blacklisted.'), 5)
 	end
 	
@@ -2906,12 +2925,15 @@ run(function()
 		return nil
 	end
 	
-	local function setKickTarget(name, enabled)
+	kickTargetList = function()
 		local module = kickModule()
 		if not module then return end
 	
-		local targetList = (module.Options and module.Options['Targets']) or module.List or module.Targets
-		setListValue(targetList, name, enabled)
+		return (module.Options and module.Options['Targets']) or module.List or module.Targets
+	end
+	
+	local function setKickTarget(name, enabled)
+		setListValue(kickTargetList(), name, enabled)
 	end
 	
 	local function setKickMode(mode)
@@ -2924,7 +2946,7 @@ run(function()
 		end
 	end
 	
-	local function addTarget(name, enabled)
+	addTarget = function(name, enabled)
 		setKickTarget(name, enabled)
 		setListValue(vape.Categories.Targets, name, enabled)
 	end
