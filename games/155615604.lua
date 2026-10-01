@@ -3626,6 +3626,12 @@ run(function()
 end)
 
 run(function()
+	local isnetworkowner = identifyexecutor and table.find({'AWP', 'Nihon'}, ({identifyexecutor()})[1]) and function()
+		return true
+	end or isnetworkowner or function()
+		return true
+	end
+	
 	local Mode
 	local List
 	local Movement
@@ -3836,6 +3842,9 @@ run(function()
 				local countTimer = 0
 				local teamTimer = 0
 				local targetTimer = 0
+				local ownedTimer = os.clock()
+				local claimTimer = 0
+				local claimSeat
 				local playerCount = AutoRejoin.Enabled and getPlayerCount() or 0
 	
 				refreshSeats()
@@ -3917,7 +3926,7 @@ run(function()
 						dir = math.clamp(dir + (math.clamp(-dir, -1, 1) * dt * 24), -12, 14)
 					end
 	
-					if Movement.Enabled then
+					if Movement.Enabled and not claimSeat then
 						local spawnTime = entitylib.character.SpawnTime
 	
 						if Equipment.Enabled and (now - spawnTime) < 2 then
@@ -3946,32 +3955,64 @@ run(function()
 					local owned, flung, waiting
 					local headfling = Equipment.Enabled and KickMode.Value == 'Headfling'
 					for _, seat in seats do
-						if isnetworkowner(seat) then
+						local isOwner = isnetworkowner(seat)
+						if isOwner then
 							owned = true
-							local target = getTarget(seat, now)
-							if not target then continue end
+						end
 	
-							if headfling and target.Humanoid.Health > 0 then
-								waiting = true
-								continue
-							end
+						if not (isOwner or (now - ownedTimer) > 3) then continue end
 	
-							flung = true
-							local part = headfling and target.Head or target.RootPart
-							local targetPos = part.Position
-							seat.AssemblyLinearVelocity = headfling and HEAD_VELOCITY or NORMAL_VELOCITY
-							seat.CFrame = headfling and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos) * NORMAL_OFFSET
-							sethiddenproperty(seat, 'PhysicsRepRootPart', part)
-							sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
+						local target = getTarget(seat, now)
+						if not target then continue end
 	
-							local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
-							if wheels then
-								wheels:Destroy()
-							end
+						if headfling and target.Humanoid.Health > 0 then
+							waiting = true
+							continue
+						end
+	
+						flung = true
+						local part = headfling and target.Head or target.RootPart
+						local targetPos = part.Position
+						seat.AssemblyLinearVelocity = headfling and HEAD_VELOCITY or NORMAL_VELOCITY
+						seat.CFrame = headfling and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos) * NORMAL_OFFSET
+						sethiddenproperty(seat, 'PhysicsRepRootPart', part)
+						sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
+	
+						local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
+						if wheels then
+							wheels:Destroy()
 						end
 					end
 	
-					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
+					if owned then
+						ownedTimer = now
+						claimSeat = nil
+						claimTimer = 0
+					elseif next(seats) then
+						if claimSeat then
+							if not claimSeat.Parent or (now - claimTimer) > 3 then
+								claimSeat = nil
+							end
+						elseif (now - ownedTimer) > 1 then
+							local nearest, dist
+							for _, seat in seats do
+								local mag = (seat.Position - root.Position).Magnitude
+								if not nearest or mag < dist then
+									nearest, dist = seat, mag
+								end
+							end
+	
+							claimSeat = nearest
+							claimTimer = now
+						end
+					end
+	
+					if claimSeat then
+						root.CFrame = claimSeat.CFrame * CFrame.new(0, 3, 0)
+						root.AssemblyLinearVelocity = Vector3.zero
+					end
+	
+					if not flung and not waiting and not claimSeat and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
