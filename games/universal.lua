@@ -7166,7 +7166,7 @@ run(function()
 	local ChatCommand
 	
 	local options = {}
-	local viewPlayer, viewEntity
+	local viewPlayer
 	local followModule, followOldMove, followPlayer, followConnection
 	
 	local function trim(text)
@@ -7215,7 +7215,6 @@ run(function()
 	
 	local function clearViewConnection()
 		viewPlayer = nil
-		viewEntity = nil
 	end
 	
 	local function restoreCamera()
@@ -7504,7 +7503,6 @@ run(function()
 	
 		clearViewConnection()
 		viewPlayer = player
-		viewEntity = entity
 		gameCamera.CameraSubject = entity.Humanoid
 	end
 	
@@ -7590,7 +7588,6 @@ run(function()
 			end))
 			ChatCommand:Clean(entitylib.Events.EntityAdded:Connect(function(entity)
 				if entity.Player == viewPlayer then
-					viewEntity = entity
 					gameCamera.CameraSubject = entity.Humanoid
 				end
 			end))

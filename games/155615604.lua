@@ -2604,7 +2604,7 @@ run(function()
 		criminals = 'Criminals'
 	}
 	local teamsService = cloneref(game:GetService('Teams'))
-	local viewPlayer, viewEntity
+	local viewPlayer
 	local followModule, followOldMove, followPlayer, followConnection
 	
 	local function trim(text)
@@ -2649,7 +2649,6 @@ run(function()
 	
 	local function clearViewConnection()
 		viewPlayer = nil
-		viewEntity = nil
 	end
 	
 	local function restoreCamera()
@@ -3073,6 +3072,33 @@ run(function()
 		startKick('Individual', 'Flinging '..table.concat(names, ', ')..'.')
 	end
 	
+	local function handleKickMethod(args)
+		if not options.Kick.Enabled then return end
+	
+		local module = kickModule()
+		if not module then
+			notif('ChatCommand', 'KickExploit is not available in this game.', 5, 'warning')
+			return
+		end
+	
+		local method = trim(args)
+		if not method or method == '' then return end
+	
+		local option = module.Options and module.Options['Kick Mode']
+		if not option or not option.SetValue then return end
+	
+		local lowered = method:lower()
+		if lowered == 'normal' then
+			option:SetValue('Normal')
+			notif('KickExploit', 'Kick method: Normal', 5)
+		elseif lowered == 'headfling' or lowered == 'head' then
+			option:SetValue('Headfling')
+			notif('KickExploit', 'Kick method: Headfling', 5)
+		else
+			notif('KickExploit', 'Invalid method. (normal/headfling)', 5, 'warning')
+		end
+	end
+	
 	-- Movement / camera commands
 	
 	local function handleTP(args)
@@ -3126,7 +3152,7 @@ run(function()
 		{Name = 'ChangeTeam', Tooltip = '.team <name>'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>'}
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/headfling>'}
 	}
 	
 	local function handleView(args)
@@ -3141,7 +3167,6 @@ run(function()
 	
 		clearViewConnection()
 		viewPlayer = player
-		viewEntity = entity
 		gameCamera.CameraSubject = entity.Humanoid
 	end
 	
@@ -3190,6 +3215,7 @@ run(function()
 		end,
 		kick = handleKick,
 		kickteam = handleKickTeam,
+		kickmethod = handleKickMethod,
 		team = handleTeam,
 		hop = handleHop,
 		serverhop = handleHop,
@@ -3232,7 +3258,6 @@ run(function()
 				if not entity.Player then return end
 	
 				if entity.Player == viewPlayer then
-					viewEntity = entity
 					gameCamera.CameraSubject = entity.Humanoid
 				end
 	
@@ -3625,7 +3650,8 @@ run(function()
 	local GUN_POSITION = Vector3.new(816, 98, 2233)
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
-	local FLING_VELOCITY = Vector3.new(10000, 0, 10000)
+	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
+	local NORMAL_OFFSET = CFrame.new(-2, -2, -12)
 	local HEAD_VELOCITY = Vector3.new(10000, 0, 0)
 	
 	local seatsDirty = false
@@ -3917,21 +3943,24 @@ run(function()
 						return
 					end
 	
-					local owned, flung
+					local owned, flung, waiting
 					local headfling = Equipment.Enabled and KickMode.Value == 'Headfling'
 					for _, seat in seats do
 						if isnetworkowner(seat) then
 							owned = true
 							local target = getTarget(seat, now)
 							if not target then continue end
-							if headfling and target.Humanoid.Health > 0 then continue end
+	
+							if headfling and target.Humanoid.Health > 0 then
+								waiting = true
+								continue
+							end
 	
 							flung = true
 							local part = headfling and target.Head or target.RootPart
 							local targetPos = part.Position
-							local head = part == target.Head
-							seat.AssemblyLinearVelocity = head and HEAD_VELOCITY or FLING_VELOCITY
-							seat.CFrame = head and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
+							seat.AssemblyLinearVelocity = headfling and HEAD_VELOCITY or NORMAL_VELOCITY
+							seat.CFrame = headfling and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos) * NORMAL_OFFSET
 							sethiddenproperty(seat, 'PhysicsRepRootPart', part)
 							sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
@@ -3942,7 +3971,7 @@ run(function()
 						end
 					end
 	
-					if not flung and next(seats) and (now - targetTimer) > 5 then
+					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
