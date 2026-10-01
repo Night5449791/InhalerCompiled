@@ -2519,7 +2519,7 @@ run(function()
 				if gui then
 					for _, holder in gui:GetChildren() do
 						if holder.Button.AutoButtonColor then
-							pickTeam(holder.Button)
+							firesignal(holder.Button.MouseButton1Click)
 							break
 						end
 					end
@@ -3874,7 +3874,7 @@ run(function()
 	
 							for _, holder in getTeamButtons() do
 								if holder.Button.AutoButtonColor then
-									pickTeam(holder.Button)
+									firesignal(holder.Button.MouseButton1Click)
 									break
 								end
 							end
@@ -4029,15 +4029,6 @@ run(function()
 		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
-	ViewTarget = KickExploit:CreateToggle({
-		Name = 'ViewTarget',
-		Function = function(callback)
-			if not callback then
-				restoreCamera()
-			end
-		end,
-		Tooltip = 'Automatically view the target being flung.'
-	})
 	KickMode = KickExploit:CreateDropdown({
 		Name = 'Kick Mode',
 		List = {'Normal', 'Headfling'},
@@ -4058,8 +4049,15 @@ run(function()
 			return value == 1 and 'stud' or 'studs'
 		end
 	})
-	-- here view target
-	
+	ViewTarget = KickExploit:CreateToggle({
+		Name = 'ViewTarget',
+		Function = function(callback)
+			if not callback then
+				restoreCamera()
+			end
+		end,
+		Tooltip = 'Automatically view the target being flung.'
+	})
 	AutoRejoin = KickExploit:CreateToggle({
 		Name = 'AutoRejoin',
 		Function = function(callback)
