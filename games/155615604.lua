@@ -2589,6 +2589,7 @@ run(function()
 	local ChatCommand
 	local addTarget
 	local kickTargetList
+	local TARGET_COLOR = Color3.new(1, 0, 0)
 	
 	local options = {}
 	local teamAliases = {
@@ -2949,6 +2950,14 @@ run(function()
 	addTarget = function(name, enabled)
 		setKickTarget(name, enabled)
 		setListValue(vape.Categories.Targets, name, enabled)
+	
+		if enabled then
+			whitelist.customtags[name] = {{text = 'Exploiter', color = TARGET_COLOR}}
+			tempTargets[name] = true
+		else
+			whitelist.customtags[name] = nil
+			tempTargets[name] = nil
+		end
 	end
 	
 	local kickTeams = {}
@@ -3537,6 +3546,7 @@ run(function()
 	local PlayerLimit
 	local TimeLimit
 	local HopList
+	local HeadOffset
 	local seats = {}
 	local spawners = {}
 	local teamButtons = {}
@@ -3552,6 +3562,7 @@ run(function()
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
 	local FLING_VELOCITY = Vector3.new(10000, 0, 10000)
+	local HEAD_VELOCITY = Vector3.new(10000, 0, 0)
 	
 	local seatsDirty = false
 	
@@ -3848,8 +3859,9 @@ run(function()
 								flung = true
 								local part = Equipment.Enabled and (target.Head or target.RootPart) or target.RootPart
 								local targetPos = part.Position
-								seat.AssemblyLinearVelocity = FLING_VELOCITY
-								seat.CFrame = CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
+								local head = part == target.Head
+								seat.AssemblyLinearVelocity = head and HEAD_VELOCITY or FLING_VELOCITY
+								seat.CFrame = head and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
 								sethiddenproperty(seat, 'PhysicsRepRootPart', part)
 								sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
@@ -3894,6 +3906,15 @@ run(function()
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
+	})
+	HeadOffset = KickExploit:CreateSlider({
+		Name = 'Head Offset',
+		Min = 0,
+		Max = 12,
+		Default = 1,
+		Suffix = function(value)
+			return value == 1 and 'stud' or 'studs'
+		end
 	})
 	AutoRejoin = KickExploit:CreateToggle({
 		Name = 'AutoRejoin',
