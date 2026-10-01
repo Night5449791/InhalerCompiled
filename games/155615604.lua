@@ -3559,7 +3559,7 @@ run(function()
 		Name = 'GetHash',
 		Function = function(callback)
 			if callback then
-				local value = table.find(Mode.ListEnabled, 'Username') and hashOf(Username.Value) or whitelist.hashes[lplr.Name..lplr.UserId]
+				local value = Mode.Value == 'Username' and hashOf(Username.Value) or whitelist.hashes[lplr.Name..lplr.UserId]
 	
 				if not value then
 					notif('GetHash', 'No hash found.', 5, 'warning')
@@ -3575,13 +3575,11 @@ run(function()
 		end,
 		Tooltip = 'Copies the private member hash of yourself or a player.'
 	})
-	Mode = GetHash:CreateTextList({
+	Mode = GetHash:CreateDropdown({
 		Name = 'Mode',
-		Default = {'Self', 'Username'},
-		Function = function()
-			if Username then
-				Username.Object.Visible = table.find(Mode.ListEnabled, 'Username') ~= nil
-			end
+		List = {'Self', 'Username'},
+		Function = function(val)
+			Username.Object.Visible = val == 'Username'
 		end
 	})
 	Username = GetHash:CreateTextBox({
@@ -3603,6 +3601,7 @@ run(function()
 	local TimeLimit
 	local HopList
 	local HeadOffset
+	local KickMode
 	local seats = {}
 	local spawners = {}
 	local teamButtons = {}
@@ -3913,7 +3912,7 @@ run(function()
 							local target = getTarget(seat, now)
 							if target then
 								flung = true
-								local part = Equipment.Enabled and (target.Head or target.RootPart) or target.RootPart
+								local part = Equipment.Enabled and KickMode.Value == 'Headfling' and target.Head or target.RootPart
 								local targetPos = part.Position
 								local head = part == target.Head
 								seat.AssemblyLinearVelocity = head and HEAD_VELOCITY or FLING_VELOCITY
@@ -3961,13 +3960,28 @@ run(function()
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
+		Function = function(callback)
+			KickMode.Object.Visible = callback
+			HeadOffset.Object.Visible = callback and KickMode.Value == 'Headfling'
+		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
+	})
+	KickMode = KickExploit:CreateDropdown({
+		Name = 'Kick Mode',
+		List = {'Normal', 'Headfling'},
+		Function = function(val)
+			HeadOffset.Object.Visible = val == 'Headfling'
+		end,
+		Visible = false,
+		Darker = true
 	})
 	HeadOffset = KickExploit:CreateSlider({
 		Name = 'Head Offset',
 		Min = 0,
 		Max = 12,
 		Default = 1,
+		Visible = false,
+		Darker = true,
 		Suffix = function(value)
 			return value == 1 and 'stud' or 'studs'
 		end
