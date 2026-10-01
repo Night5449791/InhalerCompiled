@@ -3636,6 +3636,7 @@ run(function()
 	local HopList
 	local HeadOffset
 	local KickMode
+	local ViewTarget
 	local seats = {}
 	local spawners = {}
 	local teamButtons = {}
@@ -3802,6 +3803,13 @@ run(function()
 		end
 	end
 	
+	local function restoreCamera()
+		if entitylib.isAlive then
+			gameCamera.CameraSubject = entitylib.character.Humanoid
+			gameCamera.CameraType = Enum.CameraType.Custom
+		end
+	end
+	
 	KickExploit = vape.Categories.World:CreateModule({
 		Name = 'KickExploit',
 		Function = function(callback)
@@ -3836,6 +3844,7 @@ run(function()
 				local countTimer = 0
 				local teamTimer = 0
 				local targetTimer = 0
+				local viewing = false
 				local playerCount = AutoRejoin.Enabled and getPlayerCount() or 0
 	
 				refreshSeats()
@@ -3850,6 +3859,7 @@ run(function()
 					end
 				end))
 				KickExploit:Clean(entitylib.Events.EntityRemoved:Connect(clearEntity))
+				KickExploit:Clean(restoreCamera)
 	
 				KickExploit:Clean(runService.Heartbeat:Connect(function(dt)
 					local now = os.clock()
@@ -3943,7 +3953,7 @@ run(function()
 						return
 					end
 	
-					local owned, flung, waiting
+					local owned, flung, waiting, flungHumanoid
 					local headfling = Equipment.Enabled and KickMode.Value == 'Headfling'
 					for _, seat in seats do
 						if isnetworkowner(seat) then
@@ -3957,6 +3967,7 @@ run(function()
 							end
 	
 							flung = true
+							flungHumanoid = target.Humanoid
 							local part = headfling and target.Head or target.RootPart
 							local targetPos = part.Position
 							seat.AssemblyLinearVelocity = headfling and HEAD_VELOCITY or NORMAL_VELOCITY
@@ -3971,6 +3982,14 @@ run(function()
 						end
 					end
 	
+					if ViewTarget.Enabled and flungHumanoid then
+						gameCamera.CameraSubject = flungHumanoid
+						viewing = true
+					elseif viewing then
+						viewing = false
+						restoreCamera()
+					end
+	
 					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
@@ -3979,6 +3998,7 @@ run(function()
 			else
 				table.clear(tempList)
 				table.clear(teamButtons)
+				restoreCamera()
 			end
 		end,
 		Tooltip = 'aesthetical, just remove collisions on vehicles please, this is the worst.'
@@ -4009,6 +4029,15 @@ run(function()
 		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
+	ViewTarget = KickExploit:CreateToggle({
+		Name = 'ViewTarget',
+		Function = function(callback)
+			if not callback then
+				restoreCamera()
+			end
+		end,
+		Tooltip = 'Automatically view the target being flung.'
+	})
 	KickMode = KickExploit:CreateDropdown({
 		Name = 'Kick Mode',
 		List = {'Normal', 'Headfling'},
@@ -4029,6 +4058,8 @@ run(function()
 			return value == 1 and 'stud' or 'studs'
 		end
 	})
+	-- here view target
+	
 	AutoRejoin = KickExploit:CreateToggle({
 		Name = 'AutoRejoin',
 		Function = function(callback)
