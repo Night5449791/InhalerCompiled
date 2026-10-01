@@ -3778,6 +3778,9 @@ run(function()
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
 	
+				KickMode.Object.Visible = Equipment.Enabled
+				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Headfling'
+	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
 				end
