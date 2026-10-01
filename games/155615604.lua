@@ -2604,7 +2604,7 @@ run(function()
 		criminals = 'Criminals'
 	}
 	local teamsService = cloneref(game:GetService('Teams'))
-	local viewConnection, viewEntity
+	local viewPlayer, viewEntity
 	local followModule, followOldMove, followPlayer, followConnection
 	
 	local function trim(text)
@@ -2648,7 +2648,7 @@ run(function()
 	-- Camera
 	
 	local function clearViewConnection()
-		viewConnection = disconnect(viewConnection)
+		viewPlayer = nil
 		viewEntity = nil
 	end
 	
@@ -2728,8 +2728,7 @@ run(function()
 	local function getFollowEntity()
 		if not followPlayer then return end
 	
-		local entity = entitylib.getEntity(followPlayer)
-		return entity and entity.Health > 0 and entity or nil
+		return entitylib.getEntity(followPlayer)
 	end
 	
 	local function stopFollow()
@@ -2788,7 +2787,7 @@ run(function()
 				humanoid.Sit = false
 			end
 	
-			if not getFollowEntity() then
+			if not followPlayer or not followPlayer.Parent then
 				stopFollow()
 			end
 		end)
@@ -3092,15 +3091,15 @@ run(function()
 	local function handleFollow(args)
 		if not options.PlayerFollow.Enabled then return end
 	
-		local target = findEntity(args)
-		if not target or not target.Player then
-			notif('ChatCommand', 'No living player found.', 5, 'warning')
+		local player = findPlayer(args)
+		if not player then
+			notif('ChatCommand', 'No player found.', 5, 'warning')
 			return
 		end
 	
-		startFollow(target.Player)
+		startFollow(player)
 		if followPlayer then
-			notif('ChatCommand', 'Following '..target.Player.DisplayName..'.', 5)
+			notif('ChatCommand', 'Following '..player.DisplayName..'.', 5)
 		end
 	end
 	
@@ -3133,16 +3132,17 @@ run(function()
 	local function handleView(args)
 		if not options.PlayerView.Enabled then return end
 	
-		local target = findEntity(args)
-		if not target or not target.Humanoid then
-			notif('ChatCommand', 'No living player found.', 5, 'warning')
+		local player = findPlayer(args)
+		local entity = player and entitylib.getEntity(player)
+		if not entity then
+			notif('ChatCommand', 'No player found.', 5, 'warning')
 			return
 		end
 	
 		clearViewConnection()
-		viewEntity = target
-		gameCamera.CameraSubject = target.Humanoid
-		viewConnection = target.Humanoid.Died:Connect(restoreCamera)
+		viewPlayer = player
+		viewEntity = entity
+		gameCamera.CameraSubject = entity.Humanoid
 	end
 	
 	local function handleHelp()
@@ -3219,15 +3219,24 @@ run(function()
 	
 			ChatCommand:Clean(restoreCamera)
 			ChatCommand:Clean(stopFollow)
-			ChatCommand:Clean(entitylib.Events.EntityRemoved:Connect(function(entity)
-				if entity == viewEntity then
+			ChatCommand:Clean(playersService.PlayerRemoving:Connect(function(plr)
+				if plr == viewPlayer then
 					restoreCamera()
+				end
+	
+				if plr == followPlayer then
+					stopFollow()
 				end
 			end))
 			ChatCommand:Clean(entitylib.Events.EntityAdded:Connect(function(entity)
-				if entity.Player then
-					addKickTeamMember(entity.Player)
+				if not entity.Player then return end
+	
+				if entity.Player == viewPlayer then
+					viewEntity = entity
+					gameCamera.CameraSubject = entity.Humanoid
 				end
+	
+				addKickTeamMember(entity.Player)
 			end))
 			ChatCommand:Clean(stopKickTeam)
 			ChatCommand:Clean(lplr.Chatted:Connect(onChatted))
