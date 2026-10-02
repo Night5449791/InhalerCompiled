@@ -2525,7 +2525,7 @@ run(function()
 					firesignal(switch.MouseButton1Click)
 				end
 	
-				task.wait(0.5)
+				task.wait(1)
 	
 				local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
 				if teamGui then
