@@ -3816,7 +3816,8 @@ run(function()
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
-	local leftCache = {} -- target names remembered after they leave; re-added on rejoin, cleared on server hop
+	local leftCache = {} -- target names remembered after they leave; re-added on rejoin
+	table.clear(leftCache)
 	local CYAN = BrickColor.new('Cyan')
 	local GUN_POSITION = Vector3.new(816, 98, 2233)
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
@@ -4282,10 +4283,6 @@ run(function()
 	end
 	
 	vape:Clean(playersService.PlayerAdded:Connect(rejoinPlayer))
-	vape:Clean(game:GetService('TeleportService').LocalPlayerTeleported:Connect(function()
-		table.clear(leftCache)
-		notif('KickExploit', 'Server hopped, cleared cached targets.', 5)
-	end))
 end)
 
 run(function()
