@@ -2553,7 +2553,7 @@ run(function()
 				if not AutoOnDied.Enabled then return end
 	
 				openTeamMenu()
-				task.wait(0.75)
+				task.wait(1)
 				joinFirstTeam()
 			end
 	
@@ -4031,10 +4031,11 @@ run(function()
 	
 							flung = true
 							flungHumanoid = target.Humanoid
-							local part = headfling and target.Head or target.RootPart
+							local useHead = headfling or target.Humanoid.Health <= 0
+							local part = useHead and target.Head or target.RootPart
 							local targetPos = part.Position
-							seat.AssemblyLinearVelocity = headfling and HEAD_VELOCITY or NORMAL_VELOCITY
-							seat.CFrame = headfling and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos) * NORMAL_OFFSET
+							seat.AssemblyLinearVelocity = useHead and HEAD_VELOCITY or NORMAL_VELOCITY
+							seat.CFrame = useHead and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos) * NORMAL_OFFSET
 							sethiddenproperty(seat, 'PhysicsRepRootPart', part)
 							sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
