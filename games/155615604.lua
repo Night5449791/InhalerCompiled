@@ -2576,7 +2576,7 @@ run(function()
 	
 	AutoOnDied = AutoTeam:CreateToggle({
 		Name = 'OnDied',
-		Default = true,
+		Default = false,
 		Tooltip = 'Automatically pick team on death'
 	})
 	
