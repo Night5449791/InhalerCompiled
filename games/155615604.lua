@@ -1542,50 +1542,45 @@ run(function()
 	local FastChange
 	local ChooseTeam
 	
+	local function openTeamMenu()
+		local home = lplr.PlayerGui:FindFirstChild('Home', true)
+		local switch = home and home.hud.Topbar.MenuFrame.SwitchTeams
+		if switch then
+			firesignal(switch.MouseButton1Click)
+		end
+	end
+	
+	local function switchTeam(name)
+		local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
+		if not teamGui then return false end
+		for _, holder in teamGui:GetChildren() do
+			if holder.Name == name and holder.Button.AutoButtonColor then
+				firesignal(holder.Button.MouseButton1Click)
+				return true
+			end
+		end
+		return false
+	end
+	
 	FastChange = vape.Categories.Blatant:CreateModule({
 		Name = 'FastChange',
 		Function = function(callback)
-			if callback then
-				local picked = false
+			if not callback then return end
 	
-				if lplr.Team == teams.Neutral then
-					local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-					if teamGui then
-						for _, holder in teamGui:GetChildren() do
-							if holder.Name == ChooseTeam.Value and holder.Button.AutoButtonColor then
-								firesignal(holder.Button.MouseButton1Click)
-								picked = true
-								break
-							end
-						end
-					end
-				else
-					local home = lplr.PlayerGui:FindFirstChild('Home', true)
-					local switch = home and home.hud.Topbar.MenuFrame.SwitchTeams
-					if switch then
-						firesignal(switch.MouseButton1Click)
-					end
-	
-					task.wait(0.75)
-	
-					local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-					if teamGui then
-						for _, holder in teamGui:GetChildren() do
-							if holder.Name == ChooseTeam.Value and holder.Button.AutoButtonColor then
-								firesignal(holder.Button.MouseButton1Click)
-								picked = true
-								break
-							end
-						end
-					end
-				end
-	
-				if not picked then
-					notif('FastChange', 'Could not switch to '..ChooseTeam.Value..'.', 2, 'warning')
-				end
-	
-				FastChange:Toggle()
+			local picked
+			if lplr.Team == teams.Neutral then
+				picked = switchTeam(ChooseTeam.Value)
+			else
+				openTeamMenu()
+				task.wait(0.75)
+				picked = switchTeam(ChooseTeam.Value)
 			end
+	
+			if not picked then
+				notif('FastChange', 'Could not switch to '..ChooseTeam.Value..'.', 2, 'warning')
+			end
+	
+			FastChange:Toggle()
 		end,
 		Tooltip = 'Fast team switch via the team menu'
 	})
@@ -1594,6 +1589,7 @@ run(function()
 		Name = 'Team',
 		List = {'Guards', 'Inmates'}
 	})
+	
 end)
 
 run(function()
@@ -2527,6 +2523,26 @@ end)
 
 run(function()
 	local AutoTeam
+	local AutoOnDied
+	
+	local function openTeamMenu()
+		local home = lplr.PlayerGui:FindFirstChild('Home', true)
+		local switch = home and home.hud.Topbar.MenuFrame.SwitchTeams
+		if switch then
+			firesignal(switch.MouseButton1Click)
+		end
+	end
+	
+	local function joinFirstTeam()
+		local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
+		if not teamGui then return end
+		for _, holder in teamGui:GetChildren() do
+			if holder.Button.AutoButtonColor then
+				firesignal(holder.Button.MouseButton1Click)
+				return
+			end
+		end
+	end
 	
 	AutoTeam = vape.Categories.Utility:CreateModule({
 		Name = 'AutoTeam',
@@ -2536,23 +2552,9 @@ run(function()
 			local function onDeath()
 				if not AutoOnDied.Enabled then return end
 	
-				local home = lplr.PlayerGui:FindFirstChild('Home', true)
-				local switch = home and home.hud.Topbar.MenuFrame.SwitchTeams
-				if switch then
-					firesignal(switch.MouseButton1Click)
-				end
-	
+				openTeamMenu()
 				task.wait(0.75)
-	
-				local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-				if teamGui then
-					for _, holder in teamGui:GetChildren() do
-						if holder.Button.AutoButtonColor then
-							firesignal(holder.Button.MouseButton1Click)
-							break
-						end
-					end
-				end
+				joinFirstTeam()
 			end
 	
 			local function connectDeath(entity)
@@ -2567,15 +2569,7 @@ run(function()
 			end
 	
 			if callback then
-				local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-				if gui then
-					for _, holder in gui:GetChildren() do
-						if holder.Button.AutoButtonColor then
-							firesignal(holder.Button.MouseButton1Click)
-							break
-						end
-					end
-				end
+				joinFirstTeam()
 	
 				AutoTeam:Clean(entitylib.Events.LocalAdded:Connect(connectDeath))
 				if entitylib.isAlive then
@@ -2596,6 +2590,7 @@ run(function()
 		Default = false,
 		Tooltip = 'Automatically pick team on death'
 	})
+	
 end)
 
 run(function()
