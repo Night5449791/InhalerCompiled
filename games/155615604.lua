@@ -2525,7 +2525,7 @@ run(function()
 					firesignal(switch.MouseButton1Click)
 				end
 	
-				task.wait(1)
+				task.wait(0.75)
 	
 				local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
 				if teamGui then
@@ -2903,7 +2903,7 @@ run(function()
 		if not options.ServerHop.Enabled then return end
 	
 		local serverHop = vape.Modules.ServerHop
-		if serverHop and not serverHop.Enabled then
+		if serverHop then
 			serverHop:Toggle()
 		end
 	end
