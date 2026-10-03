@@ -4266,7 +4266,7 @@ run(function()
 		Visible = false,
 		Darker = true
 	})
-	Offset = KickExploit:CreateSlider({
+	HeadOffset = KickExploit:CreateSlider({
 		Name = 'Offset',
 		Min = 0,
 		Max = 12,
@@ -4338,6 +4338,7 @@ run(function()
 	end
 	
 	vape:Clean(playersService.PlayerAdded:Connect(rejoinPlayer))
+	
 end)
 
 run(function()
