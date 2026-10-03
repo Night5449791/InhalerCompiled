@@ -4205,7 +4205,7 @@ run(function()
 							end
 						end
 	
-						root.CFrame = CFrame.new(610 + dir, Visibility.Value == 'Invisible' and 92 or 98, 2494)
+						root.CFrame = CFrame.new(610 + dir, Visibility.Value == 'Invisible' and 95 or 98, 2494)
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
