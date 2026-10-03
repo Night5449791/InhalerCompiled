@@ -3728,7 +3728,7 @@ run(function()
 				local prox = Instance.new('ProximityPrompt')
 				prox.ActionText = 'Enter'
 				prox.Enabled = not part.Occupant
-				prox.MaxActivationDistance = 8
+				prox.MaxActivationDistance = 10
 				prox.RequiresLineOfSight = false
 				prox.Parent = part
 	
@@ -4205,7 +4205,7 @@ run(function()
 							end
 						end
 	
-						root.CFrame = CFrame.new(610 + dir, Visibility.Value == 'Invisible' and 90 or 98, 2494)
+						root.CFrame = CFrame.new(610 + dir, Visibility.Value == 'Invisible' and 92 or 98, 2494)
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
@@ -4307,7 +4307,6 @@ run(function()
 		List = {'Visible', 'Invisible'},
 		Visible = Movement.Enabled,
 		Darker = true,
-		Tooltip = 'Visible - drives at the normal height (Y 98)\nInvisible - drives under the map (Y 90)'
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
