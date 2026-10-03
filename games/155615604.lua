@@ -4127,6 +4127,9 @@ run(function()
 					if DebugNet.Enabled then
 						if not ShowNetworkOwner.Enabled then
 							ShowNetworkOwner:Toggle()
+							notif('KickExploit', 'Debugging network owners')
+						else
+							notif('KickExploit', 'Debugging network owners')
 						end
 					end
 	
