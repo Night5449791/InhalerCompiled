@@ -1582,7 +1582,7 @@ run(function()
 				picked = switchTeam(ChooseTeam.Value)
 			else
 				openTeamMenu()
-				task.wait(0.75)
+				task.wait(0.8)
 				picked = switchTeam(ChooseTeam.Value)
 			end
 	
@@ -2563,7 +2563,7 @@ run(function()
 				if not AutoOnDied.Enabled then return end
 	
 				openTeamMenu()
-				task.wait(1)
+				task.wait(0.8)
 				joinFirstTeam()
 			end
 	
