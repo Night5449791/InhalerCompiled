@@ -3886,6 +3886,7 @@ run(function()
 	local Mode
 	local List
 	local Movement
+	local Visibility
 	local Equipment
 	local AutoRejoin
 	local PlayerLimit
@@ -4204,7 +4205,7 @@ run(function()
 							end
 						end
 	
-						root.CFrame = CFrame.new(610 + dir, 98, 2494)
+						root.CFrame = CFrame.new(610 + dir, Visibility.Value == 'Invisible' and 90 or 98, 2494)
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
@@ -4292,7 +4293,21 @@ run(function()
 	})
 	Movement = KickExploit:CreateToggle({
 		Name = 'Movement',
-		Default = true
+		Default = true,
+		Function = function(callback)
+			-- Movement runs its function at creation (Default), Visibility isnt built yet
+			if Visibility then
+				Visibility.Object.Visible = callback
+			end
+		end,
+		Tooltip = 'Drives a car around the prison while flinging.'
+	})
+	Visibility = KickExploit:CreateDropdown({
+		Name = 'Visibility',
+		List = {'Visible', 'Invisible'},
+		Visible = Movement.Enabled,
+		Darker = true,
+		Tooltip = 'Visible - drives at the normal height (Y 98)\nInvisible - drives under the map (Y 90)'
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
