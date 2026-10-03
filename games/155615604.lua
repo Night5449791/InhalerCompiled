@@ -4125,15 +4125,6 @@ run(function()
 						return
 					end
 	
-					if DebugNet.Enabled then
-						if not ShowNetOwn.Enabled then
-							ShowNetOwn:Toggle()
-							notif('KickExploit', 'Debugging network owners')
-						else
-							notif('KickExploit', 'Debugging network owners')
-						end
-					end
-	
 					local owned, flung, waiting, flungHumanoid
 					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
 					for _, seat in seats do
@@ -4245,6 +4236,16 @@ run(function()
 	})
 	DebugNet = KickExploit:CreateToggle({
 		Name = 'DebugNetworkOwner',
+		Function = function(callback)
+			if callback then
+				local module = vape.Modules.ShowNetworkOwner
+				if module and not module.Enabled then
+					module:Toggle()
+				end
+	
+				notif('KickExploit', 'Debugging network owners', 5)
+			end
+		end,
 		Tooltip = 'Enable debug network output.'
 	})
 	
