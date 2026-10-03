@@ -192,9 +192,21 @@ run(function()
 	end
 
 	function OriginScanner:UpdateIgnore()
-		local ignoreList = VehicleWallbang.Enabled and {lplr.Character, workspace.CarContainer} or {lplr.Character}
+		-- a nil character here would leave a hole at index 1 and drop the whole
+		-- array, leaving nothing ignored so every wallbang scan gets blocked
+		local ignoreList = {}
+		if lplr.Character then
+			table.insert(ignoreList, lplr.Character)
+		end
+
+		if VehicleWallbang.Enabled then
+			table.insert(ignoreList, workspace.CarContainer)
+		end
+
 		for _, entity in entitylib.List do
-			table.insert(ignoreList, entity.Character)
+			if entity.Character then
+				table.insert(ignoreList, entity.Character)
+			end
 		end
 
 		rayParams.FilterDescendantsInstances = ignoreList
@@ -723,6 +735,7 @@ run(function()
 	local CircleObject
 	local rand = Random.new()
 	local old
+	local hooked
 
 	local function getMousePosition()
 		if inputService.TouchEnabled then
@@ -834,9 +847,23 @@ run(function()
 				)
 
 				if newOrigin then
-					for index, value in debug.getstack(3) do
+					-- the shoot function isnt always 3 frames up, a leftover hook from an
+					-- earlier load adds a frame and makes a fixed level silently miss
+					local level = 3
+					for i = 3, 6 do
+						local success, func = pcall(function()
+							return debug.info(i, 'f')
+						end)
+						if not success or not func then break end
+						if func == pl.Shoot then
+							level = i
+							break
+						end
+					end
+
+					for index, value in debug.getstack(level) do
 						if value == origin then
-							debug.setstack(3, index, newOrigin)
+							debug.setstack(level, index, newOrigin)
 						end
 					end
 
@@ -859,7 +886,8 @@ run(function()
 			end
 
 			if callback then
-				old = hookfunction(pl.Bullet, function(...)
+				hooked = pl.Bullet
+				old = hookfunction(hooked, function(...)
 					return Hook(...)
 				end)
 
@@ -912,14 +940,16 @@ run(function()
 					task.wait()
 				until not SilentAim.Enabled
 			else
-				if old then
+				if old and hooked then
+					-- pl gets cleared on uninject before this thread runs, so the function
+					-- has to be restored through the reference captured while hooking
 					if restorefunction then
-						restorefunction(pl.Bullet)
+						restorefunction(hooked)
 					else
-						hookfunction(pl.Bullet, old)
+						hookfunction(hooked, old)
 					end
 
-					old = nil
+					old, hooked = nil, nil
 				end
 			end
 		end,
