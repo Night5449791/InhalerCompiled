@@ -21,6 +21,7 @@ local textChatService = cloneref(game:GetService('TextChatService'))
 local tweenService = cloneref(game:GetService('TweenService'))
 local runService = cloneref(game:GetService('RunService'))
 local guiService = cloneref(game:GetService('GuiService'))
+local teleportService = cloneref(game:GetService('TeleportService'))
 local teams = cloneref(game:GetService('Teams'))
 local coreGui = cloneref(game:GetService('CoreGui'))
 
@@ -3837,6 +3838,51 @@ run(function()
 end)
 
 run(function()
+	local JoinJobid
+	local Place
+	local JobId
+	
+	local places = {
+		['Non-VC'] = 155615604,
+		VC = 135564683255158
+	}
+	
+	JoinJobid = vape.Categories.World:CreateModule({
+		Name = 'JoinJobid',
+		Function = function(callback)
+			if callback then
+				JoinJobid:Toggle()
+	
+				local id = (JobId.Value or ''):gsub('%s+', '')
+				if id == '' then
+					notif('JoinJobid', 'Enter a job id first.', 5, 'warning')
+					return
+				end
+	
+				if id == game.JobId and (places[Place.Value] or game.PlaceId) == game.PlaceId then
+					notif('JoinJobid', 'Already in that server.', 5, 'warning')
+					return
+				end
+	
+				notif('JoinJobid', 'Joining '..Place.Value..' server.', 5)
+				teleportService:TeleportToPlaceInstance(places[Place.Value] or game.PlaceId, id)
+			end
+		end,
+		Tooltip = 'Teleports into a specific server using its job id\nReinjects after the teleport just like ServerHop does.'
+	})
+	Place = JoinJobid:CreateDropdown({
+		Name = 'Place',
+		List = {'Non-VC', 'VC'},
+		Tooltip = 'Non-VC - 155615604\nVC - 135564683255158'
+	})
+	JobId = JoinJobid:CreateTextBox({
+		Name = 'JobId',
+		Placeholder = 'Job id'
+	})
+	
+end)
+
+run(function()
 	local Mode
 	local List
 	local Movement
@@ -3855,7 +3901,6 @@ run(function()
 	local candidateTime = 0
 	local didClick = {}
 	local lastFling = {}
-	local flingRot = {} -- per-target part rotation (Head/HRP/Torso), only used outside of Killfling
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
@@ -4037,7 +4082,7 @@ run(function()
 				local serverHop = vape.Modules.ServerHop
 	
 				KickMode.Object.Visible = Equipment.Enabled
-				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Killfling'
+				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Headfling'
 	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
@@ -4169,33 +4214,22 @@ run(function()
 					end
 	
 					local owned, flung, waiting, flungHumanoid
-					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
+					local headfling = Equipment.Enabled and KickMode.Value == 'Headfling'
 					for _, seat in seats do
 						if isnetworkowner(seat) then
 							owned = true
 							local target = getTarget(seat, now)
 							if not target then continue end
 	
-							if killfling and target.Humanoid.Health > 0 then
+							if headfling and target.Humanoid.Health > 0 then
 								waiting = true
 								continue
 							end
 	
 							flung = true
 							flungHumanoid = target.Humanoid
-							local useHead = killfling or target.Humanoid.Health <= 0
-							local part
-							if useHead then
-								-- killfling always flings the head so the whole body follows
-								part = target.Head
-							else
-								local character = target.Character
-								local torso = character and (character:FindFirstChild('Torso') or character:FindFirstChild('UpperTorso')) or nil
-								local parts = {target.Head, target.RootPart, torso}
-								local idx = ((flingRot[target.Player.Name] or 0) % #parts) + 1
-								flingRot[target.Player.Name] = idx
-								part = parts[idx]
-							end
+							local useHead = headfling or target.Humanoid.Health <= 0
+							local part = useHead and target.Head or target.RootPart
 							local targetPos = part.Position
 							seat.AssemblyLinearVelocity = useHead and HEAD_VELOCITY or NORMAL_VELOCITY
 							seat.CFrame = useHead and CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z) or CFrame.new(targetPos) * NORMAL_OFFSET
@@ -4224,7 +4258,6 @@ run(function()
 				end))
 			else
 				table.clear(tempList)
-				table.clear(flingRot)
 				table.clear(teamButtons)
 				restoreCamera()
 			end
@@ -4253,21 +4286,21 @@ run(function()
 		Name = 'Equipment',
 		Function = function(callback)
 			KickMode.Object.Visible = callback
-			HeadOffset.Object.Visible = callback and KickMode.Value == 'Killfling'
+			HeadOffset.Object.Visible = callback and KickMode.Value == 'Headfling'
 		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
 	KickMode = KickExploit:CreateDropdown({
 		Name = 'Kick Mode',
-		List = {'Normal', 'Killfling'},
+		List = {'Normal', 'Headfling'},
 		Function = function(val)
-			HeadOffset.Object.Visible = val == 'Killfling'
+			HeadOffset.Object.Visible = val == 'Headfling'
 		end,
 		Visible = false,
 		Darker = true
 	})
 	HeadOffset = KickExploit:CreateSlider({
-		Name = 'Offset',
+		Name = 'Head Offset',
 		Min = 0,
 		Max = 12,
 		Default = 1,
