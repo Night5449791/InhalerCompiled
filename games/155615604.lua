@@ -3991,6 +3991,7 @@ run(function()
 				local backpack
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
+				local ShowNetOwn = vape.Modules.ShowNetworkOwner
 	
 				KickMode.Object.Visible = Equipment.Enabled
 				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Killfling'
@@ -4125,8 +4126,8 @@ run(function()
 					end
 	
 					if DebugNet.Enabled then
-						if not ShowNetworkOwner.Enabled then
-							ShowNetworkOwner:Toggle()
+						if not ShowNetOwn.Enabled then
+							ShowNetOwn:Toggle()
 							notif('KickExploit', 'Debugging network owners')
 						else
 							notif('KickExploit', 'Debugging network owners')
