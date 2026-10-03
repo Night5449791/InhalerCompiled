@@ -2349,7 +2349,7 @@ run(function()
 	
 	AdvancedCheck = KillNotifications:CreateToggle({
 		Name = 'AdvancedCheck',
-		Default = true
+		Default = false
 	})
 end)
 
