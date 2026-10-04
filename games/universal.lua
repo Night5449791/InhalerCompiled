@@ -7892,9 +7892,8 @@ end)
 run(function()
 	local UniversalLagger
 	local Message
-	local Rate
 	
-	local DEFAULT_MESSAGE = ' \njoin https://discord.gg/bMZ4BSUR47 and have fun :v\n '
+	local DEFAULT_MESSAGE = '\n \njoin https://discord.gg/bMZ4BSUR47 and have fun :v\n \n'
 	
 	UniversalLagger = vape.Categories.World:CreateModule({
 		Name = 'UniversalLagger',
@@ -7927,7 +7926,7 @@ run(function()
 	})
 	Message = UniversalLagger:CreateTextBox({
 		Name = 'Message',
-		Placeholder = 'Message',
+		Placeholder = 'leave it blank to use preset',
 		Tooltip = 'leave it blank to use preset'
 	})
 end)
