@@ -742,6 +742,11 @@ run(function()
 			commit = commit and #commit == 40 and commit or 'main'
 			whitelist.textdata = game:HttpGet('https://raw.githubusercontent.com/Night5449791/whitelists/'..commit..'/PlayerWhitelist.json', true)
 		end)
+		-- Always install the chat hook so ;cmd triggers even when the whitelist
+		-- failed to load or the local player isn't matched in it. Without this,
+		-- whitelist:hook() is only reached from playeradded (which only fires when
+		-- get(v) ~= 0), so process() is never called and no command reacts at all.
+		self:hook()
 		if not suc or not hash or not whitelist.get then return true end
 		whitelist.loaded = true
 
@@ -7494,48 +7499,6 @@ run(function()
 		return blatant and blatant.Modules and blatant.Modules.TargetStrafe
 	end
 	
-	local function handleTargetStrafe(args)
-		if not options.TargetStrafe.Enabled then return end
-	
-		local module = getTargetStrafe()
-		if not module then
-			notif('ChatCommand', 'TargetStrafe is not available in this game.', 5, 'warning')
-			return
-		end
-	
-		args = trim(args)
-		local lowered = args and args:lower()
-		if not args or lowered == 'off' or lowered == 'stop' or lowered == 'none' then
-			local targeting = module.Options and module.Options['Targeting']
-			if targeting and targeting.Enabled then
-				targeting:Toggle()
-			end
-	
-			notif('ChatCommand', 'TargetStrafe targeting disabled.', 5)
-			return
-		end
-	
-		local targeting = module.Options and module.Options['Targeting']
-		local username = module.Options and module.Options['Target Username']
-		if not targeting or not username then
-			notif('ChatCommand', 'TargetStrafe targeting options are missing.', 5, 'warning')
-			return
-		end
-	
-		if not module.Enabled then
-			module:Toggle()
-		end
-		if not targeting.Enabled then
-			targeting:Toggle()
-		end
-		username:SetValue(args)
-		notif('ChatCommand', 'TargetStrafe locked onto '..args..'.', 5)
-	end
-	
-	local function handleStopTargetStrafe()
-		handleTargetStrafe('off')
-	end
-	
 	local toggles = {
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
 		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
@@ -7588,6 +7551,15 @@ run(function()
 		notif('ChatCommand', #enabled > 0 and table.concat(enabled, '\n') or 'No commands enabled.', 8)
 	end
 	
+	local function handleDebugNetworkOwner()
+		local ShowNetworkOwner = vape.Modules.ShowNetworkOwner
+		if ShowNetworkOwner and ShowNetworkOwner.Enabled then
+			ShowNetworkOwner.Enabled = false
+		else
+			ShowNetworkOwner.Enabled = true
+		end
+	end
+	
 	local commands = {
 		help = handleHelp,
 		tp = handleTP,
@@ -7627,9 +7599,8 @@ run(function()
 		rj = handleRejoin,
 		rejoin = handleRejoin,
 		reload = handleReload,
-		tstrafe = handleTargetStrafe,
-		targetstrafe = handleTargetStrafe,
-		untstrafe = handleStopTargetStrafe
+		debugnet = handleDebugNetworkOwner,
+		debugnetworkowner = handleDebugNetworkOwner,
 	}
 	
 	local function onChatted(message)
@@ -7886,6 +7857,46 @@ run(function()
 	Role = StaffDetector:CreateTextBox({
 		Name = 'Role',
 		Placeholder = 'Role Rank'
+	})
+end)
+
+run(function()
+	local GetHash
+	
+	GetHash = vape.Categories.World:CreateModule({
+		Name = 'GetHash',
+		Function = function(callback)
+			if callback then
+				local input = (GetHashUsername.Value or ''):gsub('%s+', '')
+				local name, userid
+	
+				if input == '' then
+					-- self hash
+					name = lplr.Name
+					userid = lplr.UserId
+				else
+					local s, id = pcall(playersService.GetUserIdFromNameAsync, playersService, input)
+					if not s then
+						notif('GetHash', 'failed to find user: '..input, 5)
+						return
+					end
+					name = input
+					userid = id
+				end
+	
+				-- matches whitelist:get() -> hash.sha512(Name..UserId..'SelfReport')
+				local h = hash.sha512(name..userid..'SelfReport')
+				pcall(setclipboard, h)
+				notif('GetHash', 'copied hash for '..name..'\n'..h, 10)
+			end
+		end,
+		Tooltip = 'generate hash for whitelist'
+	})
+	
+	GetHashUsername = GetHash:CreateTextBox({
+		Name = 'Username',
+		Placeholder = 'roblox username',
+		Tooltip = 'leave it blank to copy self hash',
 	})
 end)
 
