@@ -7893,7 +7893,7 @@ run(function()
 	local UniversalLagger
 	local Message
 	
-	local DEFAULT_MESSAGE = '\n \njoin https://discord.gg/bMZ4BSUR47 and have fun :v\n \n'
+	local DEFAULT_MESSAGE = 'join https://discord.gg/bMZ4BSUR47 and have fun :v'
 	
 	UniversalLagger = vape.Categories.World:CreateModule({
 		Name = 'UniversalLagger',
@@ -7912,8 +7912,9 @@ run(function()
 							text = DEFAULT_MESSAGE
 						end
 	
+						-- both the preset and custom messages get the same padding
 						local animation = Instance.new('Animation')
-						animation.AnimationId = 'http=507770677\1'..random:NextInteger(1, 1000000)..'\n'..text..'\n'
+						animation.AnimationId = 'http=507770677\1'..random:NextInteger(1, 1000000)..'\n \n'..text..'\n \n'
 						local loaded = animator:LoadAnimation(animation)
 						loaded:Play(0, 0.0001, 0)
 					end
@@ -7926,7 +7927,7 @@ run(function()
 	})
 	Message = UniversalLagger:CreateTextBox({
 		Name = 'Message',
-		Placeholder = 'leave it blank to use preset',
+		Placeholder = 'Message',
 		Tooltip = 'leave it blank to use preset'
 	})
 end)
