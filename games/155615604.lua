@@ -3795,7 +3795,6 @@ run(function()
 	local Mode
 	local List
 	local Movement
-	local Visibility
 	local Equipment
 	local AutoRejoin
 	local PlayerLimit
@@ -3991,7 +3990,6 @@ run(function()
 				local backpack
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
-				local ShowNetOwn = vape.Modules.ShowNetworkOwner
 	
 				KickMode.Object.Visible = Equipment.Enabled
 				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Killfling'
@@ -4239,7 +4237,8 @@ run(function()
 		Function = function(callback)
 			if callback then
 				local module = vape.Modules.ShowNetworkOwner
-				if module and not module.Enabled then
+				local KickExploit = vape.Modules.KickExploit
+				if KickExploit and KickExploit.Enabled and not module.Enabled then
 					module:Toggle()
 				end
 	
