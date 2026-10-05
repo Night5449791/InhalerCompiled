@@ -1298,7 +1298,7 @@ run(function()
 	})
 	AntiLag = AntiInvisible:CreateToggle({
 		Name = 'AntiLag',
-		Default = true,
+		Default = false,
 		Tooltip = 'Drops malformed animations so they cannot spam your console and drop fps'
 	})
 end)
