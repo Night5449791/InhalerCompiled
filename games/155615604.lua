@@ -3825,15 +3825,6 @@ run(function()
 	local candidateTime = 0
 	local didClick = {}
 	local lastFling = {}
-	local lastNotif = {}
-	
-	-- the seat loop runs every frame, only announce a player once in a while
-	local function flingNotif(name, now)
-		if (now - (lastNotif[name] or 0)) < 5 then return end
-	
-		lastNotif[name] = now
-		notif('KickExploit', 'Attempted fling: '..name, 2)
-	end
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
@@ -3843,13 +3834,11 @@ run(function()
 	local leftCache = {} -- target names remembered after they leave; re-added on rejoin
 	table.clear(leftCache)
 	local CYAN = BrickColor.new('Cyan')
-	local GUN_POSITION = Vector3.new(816, 98, 2226)
+	local GUN_POSITION = Vector3.new(816, 98, 2233)
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
-	local NORMAL_VELOCITY = Vector3.new(-400000, 400000, -400000)
-	local NORMAL_SPIN = Vector3.new(1e7, 1e7, 1e7)
+	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
-	local FLING_PHYSICS = PhysicalProperties.new(100, 1, 1, 1, 1)
 	
 	local seatsDirty = false
 	
@@ -3968,7 +3957,7 @@ run(function()
 		table.remove(candidateList, 1)
 		lastFling[target.Player.Name] = now
 		tempList[seat] = target
-		flingNotif(target.Player.Name, now)
+		notif('KickExploit', 'Attempted fling: '..target.Player.Name, 5)
 		return target
 	end
 	
@@ -4018,34 +4007,11 @@ run(function()
 		return success and owned
 	end
 	
-	local function touch(a, b)
-		local ft = (getgenv and getgenv().firetouchinterest) or _G.firetouchinterest or firetouchinterest
-		if typeof(ft) ~= 'function' then return end
-	
-		pcall(ft, a, b, 0)
-		pcall(ft, a, b, 1)
-	end
-	
-	-- touching the seat is what gives us ownership of it, so it goes before the check
-	local function grabSeat(seat, root)
-		setMaxSimRadius()
-		touch(root, seat)
-	
-		local assembly = seat.AssemblyRootPart
-		if assembly and assembly ~= seat then
-			touch(root, assembly)
-		end
-	
-		return isNetworkOwned(seat)
-	end
-	
-	local function flingSeat(seat, limb)
-		seat.CanCollide = true
-		seat.CustomPhysicalProperties = FLING_PHYSICS
-		seat.CFrame = limb.CFrame * NORMAL_OFFSET
+	local function flingSeat(seat, root)
 		seat.AssemblyLinearVelocity = NORMAL_VELOCITY
-		seat.AssemblyAngularVelocity = NORMAL_SPIN
-		touch(seat, limb)
+		seat.CFrame = CFrame.new(root.Position) * NORMAL_OFFSET
+		sethiddenproperty(seat, 'PhysicsRepRootPart', root)
+		sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(root))
 	
 		local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
 		if wheels then
@@ -4233,46 +4199,48 @@ run(function()
 					local owned, flung, waiting, flungHumanoid
 					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
 	
+					setMaxSimRadius()
+	
 					for _, seat in seats do
-						-- grab ownership first, otherwise every seat burns a target each frame
-						if not grabSeat(seat, root) then continue end
-						owned = true
+						if isNetworkOwned(seat) then
+							owned = true
 	
-						if killfling then
-							local plr = pendingKills[seat]
-							if not plr then
-								local target = getTarget(seat, now)
-								if not target then continue end
-								plr = target.Player
+							if killfling then
+								local plr = pendingKills[seat]
+								if not plr then
+									local target = getTarget(seat, now)
+									if not target then continue end
+									plr = target.Player
 	
-								if target.Humanoid.Health > 0 then
-									pendingKills[seat] = plr
+									if target.Humanoid.Health > 0 then
+										pendingKills[seat] = plr
+										waiting = true
+										continue
+									end
+								end
+	
+								local corpse = getCorpse(plr)
+								if not corpse then
 									waiting = true
 									continue
 								end
-							end
 	
-							local corpse = getCorpse(plr)
-							if not corpse then
-								waiting = true
+								pendingKills[seat] = nil
+								lastFling[plr.Name] = now
+								flung = true
+								flungHumanoid = corpse.Humanoid
+								notif('KickExploit', 'Attempted fling: '..plr.Name, 5)
+								flingSeat(seat, corpse.RootPart)
 								continue
 							end
 	
-							pendingKills[seat] = nil
-							lastFling[plr.Name] = now
+							local target = getTarget(seat, now)
+							if not target then continue end
+	
 							flung = true
-							flungHumanoid = corpse.Humanoid
-							flingNotif(plr.Name, now)
-							flingSeat(seat, corpse.RootPart)
-							continue
+							flungHumanoid = target.Humanoid
+							flingSeat(seat, target.RootPart)
 						end
-	
-						local target = getTarget(seat, now)
-						if not target then continue end
-	
-						flung = true
-						flungHumanoid = target.Humanoid
-						flingSeat(seat, target.RootPart)
 					end
 	
 					if ViewTarget.Enabled and flungHumanoid then
