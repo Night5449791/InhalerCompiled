@@ -7886,9 +7886,9 @@ run(function()
 				local random = Random.new()
 				local animator, track
 	
-				notif('UniversalLagger', 'watch them cry nigga its fun :v', 5)
+				notif('UniversalBroadcast', 'watch them cry nigga its fun :v', 5)
 	
-				while UniversalLagger.Enabled and vape.Loaded ~= nil do
+				while UniversalBroadcast.Enabled and vape.Loaded ~= nil do
 					local character = lplr.Character
 	
 					-- only search for the animator again after a respawn
