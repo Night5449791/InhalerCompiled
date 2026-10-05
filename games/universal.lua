@@ -7465,49 +7465,6 @@ run(function()
 		notif('ChatCommand', 'Stopped following.', 5)
 	end
 	
-	local danceTrack
-	
-	local function stopDance()
-		if danceTrack then
-			pcall(function()
-				danceTrack:Stop()
-				danceTrack:Destroy()
-			end)
-			danceTrack = nil
-		end
-	end
-	
-	local function handleDance()
-		if not options.Dance.Enabled then return end
-	
-		stopDance()
-	
-		local humanoid = getLocalHumanoid()
-		if not humanoid or not humanoid.Parent then
-			notif('ChatCommand', 'No character found.', 5, 'warning')
-			return
-		end
-	
-		local r15 = humanoid.RigType == Enum.HumanoidRigType.R15
-		local dances = r15
-			and {'3333432454', '4555808220', '4049037604', '4555782893', '10214311282', '10714010337', '10713981723', '10714372526', '10714076981', '10714392151', '11444443576'}
-			or {'27789359', '30196114', '248263260', '45834924', '33796059', '28488254', '52155728'}
-	
-		local animation = Instance.new('Animation')
-		animation.AnimationId = 'rbxassetid://'..dances[math.random(1, #dances)]
-		danceTrack = humanoid:LoadAnimation(animation)
-		danceTrack.Looped = true
-		danceTrack:Play()
-		notif('ChatCommand', 'Dancing.', 5)
-	end
-	
-	local function handleStopDance()
-		if not options.Dance.Enabled then return end
-	
-		stopDance()
-		notif('ChatCommand', 'Stopped dancing.', 5)
-	end
-	
 	local function getTargetStrafe()
 		local module = vape.Modules and vape.Modules.TargetStrafe
 		if module then return module end
@@ -7534,11 +7491,6 @@ run(function()
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'CopyUser', Tooltip = '.copyuser <plr>'},
-		{Name = 'Dance', Tooltip = '.dance\n.dundance', Function = function(enabled)
-			if not enabled then
-				stopDance()
-			end
-		end},
 		{Name = 'TargetStrafe', Tooltip = '.tstrafe <username>\n.tstrafe off / .untstrafe'}
 	}
 	
@@ -7583,9 +7535,6 @@ run(function()
 		tp = handleTP,
 		follow = handleFollow,
 		unfollow = handleUnfollow,
-		dance = handleDance,
-		dundance = handleStopDance,
-		nodance = handleStopDance,
 		view = handleView,
 		unview = restoreCamera,
 		wl = function(args)
@@ -7643,7 +7592,6 @@ run(function()
 	
 			ChatCommand:Clean(restoreCamera)
 			ChatCommand:Clean(stopFollow)
-			ChatCommand:Clean(stopDance)
 			ChatCommand:Clean(playersService.PlayerRemoving:Connect(function(plr)
 				if plr == viewPlayer then
 					restoreCamera()
@@ -7929,29 +7877,28 @@ run(function()
 		Name = 'UniversalLagger',
 		Function = function(callback)
 			if callback then
+				local random = Random.new()
+	
 	            notif('UniversalLagger', 'yo nigga lets see their reaction !1!1!11!', 5)
+				repeat
+					local character = lplr.Character
+					local animator = character and character:FindFirstChildWhichIsA('Animator', true) or nil
 	
-				local character = lplr.Character
-				local animator = character and character:FindFirstChildWhichIsA('Animator', true) or nil
+					if animator then
+						local text = Message.Value or ''
+						if text == '' then
+							text = DEFAULT_MESSAGE
+						end
 	
-				if animator then
-					local random = Random.new()
-					local text = Message.Value or ''
-					if text == '' then
-						text = DEFAULT_MESSAGE
-					end
-	
-					-- build ONE broken anim, then spam it instead of making a new one each frame
-					local animation = Instance.new('Animation')
-					-- yk a broken anim can make roblox fucking warn every clients
-					animation.AnimationId = 'http=5077706747\1'..random:NextInteger(1, 1000000)..'\n \n'..text..'\n \n'
-	
-					repeat
+						-- both the preset and custom messages get the same padding
+						local animation = Instance.new('Animation')
+						animation.AnimationId = 'http=507770677\1'..random:NextInteger(1, 1000000)..'\n \n'..text..'\n \n'
 						local loaded = animator:LoadAnimation(animation)
 						loaded:Play(0, 0.0001, 0)
-						task.wait()
-					until not UniversalLagger.Enabled
-				end
+					end
+	
+					task.wait()
+				until not UniversalLagger.Enabled
 			end
 		end,
 		Tooltip = 'lags ur server, thx v3rm'
@@ -7959,11 +7906,7 @@ run(function()
 	Message = UniversalLagger:CreateTextBox({
 		Name = 'Message',
 		Placeholder = 'Message',
-		Tooltip = 'leave it blank to use preset',
-		Function = function()
-	        UniversalLagger:Toggle()
-			UniversalLagger:Toggle()
-	    end,
+		Tooltip = 'leave it blank to use preset'
 	})
 end)
 
