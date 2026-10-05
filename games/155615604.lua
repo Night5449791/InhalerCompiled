@@ -3848,8 +3848,10 @@ run(function()
 	local GUN_POSITION = Vector3.new(816, 98, 2233)
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
-	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
+	local NORMAL_VELOCITY = Vector3.new(-400000, 400000, -400000)
+	local NORMAL_SPIN = Vector3.new(1e7, 1e7, 1e7)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
+	local FLING_PHYSICS = PhysicalProperties.new(100, 1, 1, 1, 1)
 	
 	local seatsDirty = false
 	
@@ -3993,16 +3995,66 @@ run(function()
 		return
 	end
 	
-	local function flingSeat(seat, root)
+	-- the chunk env is not always the executor env, these live on the real global table
+	local function setMaxSimRadius()
+		local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
+		local setsim = (getgenv and getgenv().setsimulationradius) or _G.setsimulationradius or setsimulationradius
+	
+		if typeof(sethidden) == 'function' then
+			pcall(sethidden, lplr, 'SimulationRadius', 1e9)
+			pcall(sethidden, lplr, 'MaximumSimulationRadius', 1e9)
+		end
+	
+		if typeof(setsim) == 'function' then
+			pcall(setsim, 1e9)
+		end
+	end
+	
+	-- isnetworkowner only reports ownership inside the simulation radius, so
+	-- setMaxSimRadius has to run first
+	local function isNetworkOwned(part)
+		local isnetowner = (getgenv and getgenv().isnetworkowner) or _G.isnetworkowner or isnetworkowner
+		if typeof(isnetowner) ~= 'function' then return true end
+	
+		local success, owned = pcall(isnetowner, part)
+		return success and owned
+	end
+	
+	local function touch(a, b)
+		local ft = (getgenv and getgenv().firetouchinterest) or _G.firetouchinterest or firetouchinterest
+		if typeof(ft) ~= 'function' then return end
+	
+		pcall(ft, a, b, 0)
+		pcall(ft, a, b, 1)
+	end
+	
+	-- touching the seat is what gives us ownership of it, so it goes before the check
+	local function flingSeat(seat, root, limb)
+		setMaxSimRadius()
+		touch(root, seat)
+	
+		local assembly = seat.AssemblyRootPart
+		if assembly and assembly ~= seat then
+			touch(root, assembly)
+		end
+	
+		if not isNetworkOwned(seat) then
+			return false
+		end
+	
+		seat.CanCollide = true
+		seat.CustomPhysicalProperties = FLING_PHYSICS
+		seat.CFrame = limb.CFrame * NORMAL_OFFSET
 		seat.AssemblyLinearVelocity = NORMAL_VELOCITY
-		seat.CFrame = CFrame.new(root.Position) * NORMAL_OFFSET
-		sethiddenproperty(seat, 'PhysicsRepRootPart', root)
-		sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(root))
+		seat.AssemblyAngularVelocity = NORMAL_SPIN
+		touch(seat, limb)
 	
 		local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
 		if wheels then
 			wheels:Destroy()
 		end
+	
+		return true
 	end
 	
 	local function clearPlayer(plr)
@@ -4087,6 +4139,8 @@ run(function()
 				end))
 				KickExploit:Clean(entitylib.Events.EntityRemoved:Connect(clearEntity))
 				KickExploit:Clean(restoreCamera)
+				-- the engine resets the radius every physics step, max it again right after
+				KickExploit:Clean(runService.PostSimulation:Connect(setMaxSimRadius))
 	
 				KickExploit:Clean(runService.Heartbeat:Connect(function(dt)
 					local now = os.clock()
@@ -4183,53 +4237,48 @@ run(function()
 					local owned, flung, waiting, flungHumanoid
 					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
 	
-					-- isnetworkowner only reports ownership inside our simulation radius,
-					-- maxing it out every frame makes every seat count as locally owned
-					if setsimulationradius then
-						setsimulationradius(math.huge)
-					end
-					sethiddenproperty(lplr, 'SimulationRadius', math.huge)
+					setMaxSimRadius()
 	
 					for _, seat in seats do
-						if isnetworkowner(seat) then
-							owned = true
+						if killfling then
+							local plr = pendingKills[seat]
+							if not plr then
+								local target = getTarget(seat, now)
+								if not target then continue end
+								plr = target.Player
 	
-							if killfling then
-								local plr = pendingKills[seat]
-								if not plr then
-									local target = getTarget(seat, now)
-									if not target then continue end
-									plr = target.Player
-	
-									if target.Humanoid.Health > 0 then
-										pendingKills[seat] = plr
-										waiting = true
-										continue
-									end
-								end
-	
-								local corpse = getCorpse(plr)
-								if not corpse then
+								if target.Humanoid.Health > 0 then
+									pendingKills[seat] = plr
 									waiting = true
 									continue
 								end
+							end
 	
-								pendingKills[seat] = nil
-								lastFling[plr.Name] = now
-								flung = true
-								flungHumanoid = corpse.Humanoid
-								notif('KickExploit', 'Attempted fling: '..plr.Name, 5)
-								flingSeat(seat, corpse.RootPart)
+							local corpse = getCorpse(plr)
+							if not corpse then
+								waiting = true
 								continue
 							end
 	
-							local target = getTarget(seat, now)
-							if not target then continue end
+							if not flingSeat(seat, root, corpse.RootPart) then continue end
 	
+							pendingKills[seat] = nil
+							lastFling[plr.Name] = now
 							flung = true
-							flungHumanoid = target.Humanoid
-							flingSeat(seat, target.RootPart)
+							owned = true
+							flungHumanoid = corpse.Humanoid
+							notif('KickExploit', 'Attempted fling: '..plr.Name, 5)
+							continue
 						end
+	
+						local target = getTarget(seat, now)
+						if not target then continue end
+	
+						if not flingSeat(seat, root, target.RootPart) then continue end
+	
+						flung = true
+						owned = true
+						flungHumanoid = target.Humanoid
 					end
 	
 					if ViewTarget.Enabled and flungHumanoid then
@@ -4286,22 +4335,6 @@ run(function()
 		Visible = false,
 		Darker = true
 	})
-	DebugNet = KickExploit:CreateToggle({
-		Name = 'DebugNetworkOwner',
-		Function = function(callback)
-			if callback then
-				local module = vape.Modules.ShowNetworkOwner
-				local KickExploit = vape.Modules.KickExploit
-				if KickExploit and KickExploit.Enabled and not module.Enabled then
-					module:Toggle()
-				end
-	
-				notif('KickExploit', 'Debugging network owners', 5)
-			end
-		end,
-		Tooltip = 'Enable debug network output.'
-	})
-	
 	ViewTarget = KickExploit:CreateToggle({
 		Name = 'ViewTarget',
 		Function = function(callback)
