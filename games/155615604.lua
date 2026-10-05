@@ -29,7 +29,6 @@ local gameCamera = workspace.CurrentCamera
 local lplr = playersService.LocalPlayer
 local vape = shared.vape
 local entitylib = vape.Libraries.entity
-local json = vape.Libraries.json
 local whitelist = vape.Libraries.whitelist
 local targetinfo = vape.Libraries.targetinfo
 local sessioninfo = vape.Libraries.sessioninfo
@@ -3002,23 +3001,6 @@ run(function()
 		end
 	end
 	
-	-- Copy user whitelist hash
-	
-	local function handleCopyUser(args)
-		if not options.CopyUser.Enabled then return end
-	
-		local player = findPlayer(args)
-		if not player then
-			notif('ChatCommand', 'No player found.', 5, 'warning')
-			return
-		end
-	
-		-- matches whitelist:get() / GetHash -> sha512(Name..UserId..'SelfReport')
-		local h = hash.sha512(player.Name..player.UserId..'SelfReport')
-		pcall(setclipboard, h)
-		notif('ChatCommand', 'Copied hash for '..player.DisplayName..'\n'..h, 10)
-	end
-	
 	-- KickExploit bridge
 	
 	local function kickModule()
@@ -3246,56 +3228,6 @@ run(function()
 		notif('ChatCommand', 'Stopped following.', 5)
 	end
 	
-	local function getTargetStrafe()
-		local module = vape.Modules and vape.Modules.TargetStrafe
-		if module then return module end
-	
-		local blatant = vape.Categories and vape.Categories.Blatant
-		return blatant and blatant.Modules and blatant.Modules.TargetStrafe
-	end
-	
-	local function handleTargetStrafe(args)
-		if not options.TargetStrafe.Enabled then return end
-	
-		local module = getTargetStrafe()
-		if not module then
-			notif('ChatCommand', 'TargetStrafe is not available in this game.', 5, 'warning')
-			return
-		end
-	
-		args = trim(args)
-		local lowered = args and args:lower()
-		if not args or lowered == 'off' or lowered == 'stop' or lowered == 'none' then
-			local targeting = module.Options and module.Options['Targeting']
-			if targeting and targeting.Enabled then
-				targeting:Toggle()
-			end
-	
-			notif('ChatCommand', 'TargetStrafe targeting disabled.', 5)
-			return
-		end
-	
-		local targeting = module.Options and module.Options['Targeting']
-		local username = module.Options and module.Options['Target Username']
-		if not targeting or not username then
-			notif('ChatCommand', 'TargetStrafe targeting options are missing.', 5, 'warning')
-			return
-		end
-	
-		if not module.Enabled then
-			module:Toggle()
-		end
-		if not targeting.Enabled then
-			targeting:Toggle()
-		end
-		username:SetValue(args)
-		notif('ChatCommand', 'TargetStrafe locked onto '..args..'.', 5)
-	end
-	
-	local function handleStopTargetStrafe()
-		handleTargetStrafe('off')
-	end
-	
 	local toggles = {
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
 		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
@@ -3314,10 +3246,8 @@ run(function()
 		{Name = 'ChangeTeam', Tooltip = '.team <name>'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
-		{Name = 'CopyUser', Tooltip = '.copyuser <plr>'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr>\n.removeskid <plr>'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/killfling>'},
-		{Name = 'TargetStrafe', Tooltip = '.tstrafe <username>\n.tstrafe off / .untstrafe'}
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/killfling>'}
 	}
 	
 	local function handleView(args)
@@ -3378,7 +3308,6 @@ run(function()
 		unblacklist = function(args)
 			handleTargets(args, true)
 		end,
-		copyuser = handleCopyUser,
 		addcheater = function(args)
 			handleCheater(args, false)
 		end,
@@ -3399,10 +3328,7 @@ run(function()
 		serverhop = handleHop,
 		rj = handleRejoin,
 		rejoin = handleRejoin,
-		reload = handleReload,
-		tstrafe = handleTargetStrafe,
-		targetstrafe = handleTargetStrafe,
-		untstrafe = handleStopTargetStrafe
+		reload = handleReload
 	}
 	
 	local function onChatted(message)
@@ -3585,9 +3511,10 @@ run(function()
 	
 	local CheaterDetector
 	local cheaterOptions = {}
-	local filePath = 'newvape/profile/cheaters-'..tostring(game.GameId)..'.json'
+	local folderPath = 'newvape/profile/'
+	local filePath = folderPath..'cheaters-'..tostring(game.GameId)..'.json'
 	local Cheaters = {Names = {}, Users = {}}
-	local canSave = json ~= nil
+	local httpService = cloneref(game:GetService('HttpService'))
 	
 	-- vape.Notifications only exists once the gui is loaded, this file runs before that
 	local function notify(text, duration, type)
@@ -3597,17 +3524,30 @@ run(function()
 	end
 	
 	local function saveCheaters()
-		if not canSave then
-			notify('Failed to save, json library is unavailable.', 15, 'warning')
-		elseif not pcall(json.write, filePath, Cheaters) then
+		if not isfolder(folderPath) then
+			pcall(makefolder, folderPath)
+		end
+	
+		local encoded, content = pcall(function()
+			return httpService:JSONEncode(Cheaters)
+		end)
+	
+		if not encoded or not pcall(writefile, filePath, content) then
 			notify('Failed to write '..filePath, 15, 'warning')
 		end
 	end
 	
 	local function loadCheaters()
-		local data = canSave and json.read(filePath)
-		if not data then
+		if not isfile(filePath) then
 			return saveCheaters() -- creates the file on first run
+		end
+	
+		local decoded, data = pcall(function()
+			return httpService:JSONDecode(readfile(filePath))
+		end)
+	
+		if not decoded or type(data) ~= 'table' then
+			return saveCheaters()
 		end
 	
 		Cheaters.Names = type(data.Names) == 'table' and data.Names or {}
@@ -4242,6 +4182,14 @@ run(function()
 	
 					local owned, flung, waiting, flungHumanoid
 					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
+	
+					-- isnetworkowner only reports ownership inside our simulation radius,
+					-- maxing it out every frame makes every seat count as locally owned
+					if setsimulationradius then
+						setsimulationradius(math.huge)
+					end
+					sethiddenproperty(lplr, 'SimulationRadius', math.huge)
+	
 					for _, seat in seats do
 						if isnetworkowner(seat) then
 							owned = true

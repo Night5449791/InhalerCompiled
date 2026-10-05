@@ -222,7 +222,6 @@ local function motorMove(target, cf)
 end
 
 local hash = loadstring(downloadFile('newvape/libraries/hash.lua'), 'hash')()
-local json = loadstring(downloadFile('newvape/libraries/json.lua'), 'json')()
 local prediction = loadstring(downloadFile('newvape/libraries/prediction.lua'), 'prediction')()
 entitylib = loadstring(downloadFile('newvape/libraries/entity.lua'), 'entitylibrary')()
 local whitelist = {
@@ -244,7 +243,6 @@ vape.Libraries.entity = entitylib
 vape.Libraries.whitelist = whitelist
 vape.Libraries.prediction = prediction
 vape.Libraries.hash = hash
-vape.Libraries.json = json
 vape.Libraries.auraanims = {
 	Normal = {
 		{CFrame = CFrame.new(-0.17, -0.14, -0.12) * CFrame.Angles(math.rad(-53), math.rad(50), math.rad(-64)), Time = 0.1},
@@ -7415,23 +7413,6 @@ run(function()
 		notif('Blacklist', player.DisplayName..' has been '..(remove and 'unblacklisted.' or 'blacklisted.'), 5)
 	end
 	
-	-- Copy user whitelist hash
-	
-	local function handleCopyUser(args)
-		if not options.CopyUser.Enabled then return end
-	
-		local player = findPlayer(args)
-		if not player then
-			notif('ChatCommand', 'No player found.', 5, 'warning')
-			return
-		end
-	
-		-- matches whitelist:get() / GetHash -> sha512(Name..UserId..'SelfReport')
-		local h = hash.sha512(player.Name..player.UserId..'SelfReport')
-		pcall(setclipboard, h)
-		notif('ChatCommand', 'Copied hash for '..player.DisplayName..'\n'..h, 10)
-	end
-	
 	-- Movement / camera commands
 	
 	local function handleTP(args)
@@ -7467,14 +7448,6 @@ run(function()
 		notif('ChatCommand', 'Stopped following.', 5)
 	end
 	
-	local function getTargetStrafe()
-		local module = vape.Modules and vape.Modules.TargetStrafe
-		if module then return module end
-	
-		local blatant = vape.Categories and vape.Categories.Blatant
-		return blatant and blatant.Modules and blatant.Modules.TargetStrafe
-	end
-	
 	local toggles = {
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
 		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
@@ -7491,9 +7464,7 @@ run(function()
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
-		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
-		{Name = 'CopyUser', Tooltip = '.copyuser <plr>'},
-		{Name = 'TargetStrafe', Tooltip = '.tstrafe <username>\n.tstrafe off / .untstrafe'}
+		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'}
 	}
 	
 	local function handleView(args)
@@ -7563,7 +7534,6 @@ run(function()
 		unblacklist = function(args)
 			handleTargets(args, true)
 		end,
-		copyuser = handleCopyUser,
 		hop = handleHop,
 		serverhop = handleHop,
 		rj = handleRejoin,
@@ -7830,6 +7800,115 @@ run(function()
 end)
 
 run(function()
+	local Backflip
+	local Flips
+	
+	local flip = {
+		Active = false,
+		Elapsed = 0,
+		Duration = 0,
+		Start = CFrame.identity,
+		Gyro = nil,
+		Humanoid = nil,
+		Root = nil
+	}
+	
+	local function endFlip()
+		if flip.Gyro then
+			flip.Gyro:Destroy()
+		end
+	
+		if flip.Humanoid then
+			flip.Humanoid.AutoRotate = true
+			pcall(flip.Humanoid.SetStateEnabled, flip.Humanoid, Enum.HumanoidStateType.FallingDown, true)
+		end
+	
+		flip.Active = false
+		flip.Gyro, flip.Humanoid, flip.Root = nil, nil, nil
+	end
+	
+	local function startFlip()
+		if flip.Active or not entitylib.isAlive then return end
+	
+		local humanoid = entitylib.character.Humanoid
+		-- how long the jump lasts, the rotation is spread across it
+		local duration = workspace.Gravity > 0 and ((2 * humanoid.JumpPower) / workspace.Gravity) - 0.05 or 0
+		if duration <= 0 then return end
+	
+		local root = entitylib.character.RootPart
+		flip.Active = true
+		flip.Elapsed = 0
+		flip.Duration = duration
+		flip.Start = root.CFrame
+		flip.Humanoid = humanoid
+		flip.Root = root
+		pcall(humanoid.SetStateEnabled, humanoid, Enum.HumanoidStateType.FallingDown, false)
+	
+		local gyro = Instance.new('BodyGyro')
+		gyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+		gyro.P = 1000000
+		gyro.D = 500
+		gyro.CFrame = root.CFrame
+		gyro.Parent = root
+		flip.Gyro = gyro
+	end
+	
+	-- turns the module back off so the bind can be spammed for more flips
+	local function finishFlip()
+		endFlip()
+	
+		if Backflip.Enabled then
+			task.defer(Backflip.Toggle, Backflip)
+		end
+	end
+	
+	Backflip = vape.Categories.World:CreateModule({
+		Name = 'Backflip',
+		Function = function(callback)
+			if callback then
+				Backflip:Clean(endFlip)
+				Backflip:Clean(inputService.JumpRequest:Connect(startFlip))
+				Backflip:Clean(runService.Heartbeat:Connect(function(dt)
+					if not flip.Active then return end
+	
+					local root, humanoid, gyro = flip.Root, flip.Humanoid, flip.Gyro
+					if not entitylib.isAlive or not root.Parent or not gyro.Parent then
+						finishFlip()
+						return
+					end
+	
+					humanoid.AutoRotate = false
+					flip.Elapsed += dt
+	
+					if flip.Elapsed >= flip.Duration then
+						finishFlip()
+						return
+					end
+	
+					gyro.CFrame = flip.Start * CFrame.Angles(-math.rad(360 * Flips.Value * (flip.Elapsed / flip.Duration)), 0, 0)
+				end))
+	
+				-- flipping needs air time, so jump right away instead of waiting for spacebar
+				if entitylib.isAlive then
+					entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+				end
+				startFlip()
+			end
+		end,
+		Tooltip = 'Flips your character, disables itself after the flip'
+	})
+	
+	Flips = Backflip:CreateSlider({
+		Name = 'Flips',
+		Min = 1,
+		Max = 3,
+		Default = 1,
+		Tooltip = 'Amount of rotations done per jump'
+	})
+	
+end)
+
+run(function()
 	local GetHash
 	
 	GetHash = vape.Categories.World:CreateModule({
@@ -7870,7 +7949,7 @@ run(function()
 end)
 
 run(function()
-	local UniversalLagger
+	local UniversalBroadcast
 	local Message
 	local Delay
 	
@@ -7878,7 +7957,7 @@ run(function()
 	local animation
 	
 	UniversalLagger = vape.Categories.World:CreateModule({
-		Name = 'UniversalLagger',
+		Name = 'UniversalBroadcast',
 		Function = function(callback)
 			if callback then
 				local random = Random.new()
