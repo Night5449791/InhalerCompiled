@@ -3246,7 +3246,7 @@ run(function()
 		{Name = 'ChangeTeam', Tooltip = '.team <name>'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
-		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.removeskid <plr>'},
+		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>'},
 		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/killfling>'}
 	}
 	
@@ -3308,16 +3308,10 @@ run(function()
 		unblacklist = function(args)
 			handleTargets(args, true)
 		end,
-		addcheater = function(args)
-			handleCheater(args, false)
-		end,
-		removecheater = function(args)
-			handleCheater(args, true)
-		end,
 		addskid = function(args)
 			handleCheater(args, false)
 		end,
-		removeskid = function(args)
+		delskid = function(args)
 			handleCheater(args, true)
 		end,
 		kick = handleKick,
