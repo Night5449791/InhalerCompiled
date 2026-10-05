@@ -3836,6 +3836,15 @@ run(function()
 	local candidateTime = 0
 	local didClick = {}
 	local lastFling = {}
+	local lastNotif = {}
+	
+	-- the seat loop runs every frame, only announce a player once in a while
+	local function flingNotif(name, now)
+		if (now - (lastNotif[name] or 0)) < 5 then return end
+	
+		lastNotif[name] = now
+		notif('KickExploit', 'Attempted fling: '..name, 5)
+	end
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
@@ -3970,7 +3979,7 @@ run(function()
 		table.remove(candidateList, 1)
 		lastFling[target.Player.Name] = now
 		tempList[seat] = target
-		notif('KickExploit', 'Attempted fling: '..target.Player.Name, 5)
+		flingNotif(target.Player.Name, now)
 		return target
 	end
 	
@@ -4029,7 +4038,7 @@ run(function()
 	end
 	
 	-- touching the seat is what gives us ownership of it, so it goes before the check
-	local function flingSeat(seat, root, limb)
+	local function grabSeat(seat, root)
 		setMaxSimRadius()
 		touch(root, seat)
 	
@@ -4038,10 +4047,10 @@ run(function()
 			touch(root, assembly)
 		end
 	
-		if not isNetworkOwned(seat) then
-			return false
-		end
+		return isNetworkOwned(seat)
+	end
 	
+	local function flingSeat(seat, limb)
 		seat.CanCollide = true
 		seat.CustomPhysicalProperties = FLING_PHYSICS
 		seat.CFrame = limb.CFrame * NORMAL_OFFSET
@@ -4053,8 +4062,6 @@ run(function()
 		if wheels then
 			wheels:Destroy()
 		end
-	
-		return true
 	end
 	
 	local function clearPlayer(plr)
@@ -4237,9 +4244,11 @@ run(function()
 					local owned, flung, waiting, flungHumanoid
 					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
 	
-					setMaxSimRadius()
-	
 					for _, seat in seats do
+						-- grab ownership first, otherwise every seat burns a target each frame
+						if not grabSeat(seat, root) then continue end
+						owned = true
+	
 						if killfling then
 							local plr = pendingKills[seat]
 							if not plr then
@@ -4260,25 +4269,21 @@ run(function()
 								continue
 							end
 	
-							if not flingSeat(seat, root, corpse.RootPart) then continue end
-	
 							pendingKills[seat] = nil
 							lastFling[plr.Name] = now
 							flung = true
-							owned = true
 							flungHumanoid = corpse.Humanoid
-							notif('KickExploit', 'Attempted fling: '..plr.Name, 5)
+							flingNotif(plr.Name, now)
+							flingSeat(seat, corpse.RootPart)
 							continue
 						end
 	
 						local target = getTarget(seat, now)
 						if not target then continue end
 	
-						if not flingSeat(seat, root, target.RootPart) then continue end
-	
 						flung = true
-						owned = true
 						flungHumanoid = target.Humanoid
+						flingSeat(seat, target.RootPart)
 					end
 	
 					if ViewTarget.Enabled and flungHumanoid then
