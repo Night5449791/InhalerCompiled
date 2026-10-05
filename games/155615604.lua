@@ -2559,7 +2559,7 @@ run(function()
 				if not AutoOnDied.Enabled then return end
 	
 				openTeamMenu()
-				task.wait(0.8)
+				task.wait(1)
 				joinFirstTeam()
 			end
 	
@@ -3506,13 +3506,12 @@ run(function()
 end)
 
 run(function()
-	-- cheaters are stored locally in newvape/profile/cheaters-<GameId>.json
+	-- cheaters are stored locally in newvape/cheaters.json
 	-- the list starts empty and is user managed
 	
 	local CheaterDetector
 	local cheaterOptions = {}
-	local folderPath = 'newvape/profile/'
-	local filePath = folderPath..'cheaters-'..tostring(game.GameId)..'.json'
+	local filePath = 'newvape/cheaters.json'
 	local Cheaters = {Names = {}, Users = {}}
 	local httpService = cloneref(game:GetService('HttpService'))
 	
@@ -3524,16 +3523,21 @@ run(function()
 	end
 	
 	local function saveCheaters()
-		if not isfolder(folderPath) then
-			pcall(makefolder, folderPath)
+		if not isfolder('newvape') then
+			pcall(makefolder, 'newvape')
 		end
 	
 		local encoded, content = pcall(function()
 			return httpService:JSONEncode(Cheaters)
 		end)
 	
-		if not encoded or not pcall(writefile, filePath, content) then
-			notify('Failed to write '..filePath, 15, 'warning')
+		if not encoded then
+			return notify('Failed to encode: '..tostring(content), 15, 'warning')
+		end
+	
+		local written, err = pcall(writefile, filePath, content)
+		if not written then
+			notify('Failed to write '..filePath..' ('..tostring(err)..')', 15, 'warning')
 		end
 	end
 	
@@ -3843,7 +3847,7 @@ run(function()
 		if (now - (lastNotif[name] or 0)) < 5 then return end
 	
 		lastNotif[name] = now
-		notif('KickExploit', 'Attempted fling: '..name, 5)
+		notif('KickExploit', 'Attempted fling: '..name, 2)
 	end
 	local tempList = setmetatable({}, {
 		__mode = 'k'
