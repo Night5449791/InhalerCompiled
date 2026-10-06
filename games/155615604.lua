@@ -4325,6 +4325,19 @@ run(function()
 		end
 	end
 	
+	-- the physics rep only covers one part, the head gets pushed on top of it so the
+	-- whole corpse launches instead of just the torso. this needs network ownership
+	-- of the head, otherwise the engine rejects the write
+	local function flingHead(root)
+		local character = root and root.Parent
+		local head = character and character:FindFirstChild('Head')
+		if not head then return end
+	
+		pcall(function()
+			head.AssemblyLinearVelocity = NORMAL_VELOCITY
+		end)
+	end
+	
 	local function clearPlayer(plr)
 		lastFling[plr.Name] = nil
 		for seat, target in tempList do
@@ -4525,6 +4538,7 @@ run(function()
 										flungHumanoid = pending.Humanoid
 										notif('KickExploit', 'Attempted fling: '..pending.Player.Name, 5)
 										flingSeat(seat, pending.RootPart)
+										flingHead(pending.RootPart)
 										continue
 									end
 	
