@@ -943,7 +943,7 @@ run(function()
 end)
 entitylib.start()0
 
-notif("Inhaler", "Welcome to Inhaler V4, the better exploiting solution.")
+notif("Inhaler", "Welcome to Inhaler V4, the better exploiting solution.", 5)
 
 run(function()
 	local AimAssist
