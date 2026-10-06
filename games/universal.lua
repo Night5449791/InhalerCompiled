@@ -7374,6 +7374,18 @@ run(function()
 		end
 	end
 	
+	local function handleBroadcast()
+		if not options.Broadcast.Enabled then return end
+	
+		local module = vape.Modules.UniversalBroadcast
+		if module then
+			module:Toggle()
+			notif('UniversalBroadcast', 'Automatically broadcasting in console. Press F9 or chat /console to see result', 5)
+		else
+			notif('ChatCommand', 'UniversalBroadcast is not available in this game.', 5, 'warning')
+		end
+	end
+	
 	-- Whitelist / target lists
 	
 	local function handleWhitelist(args, remove)
@@ -7466,7 +7478,8 @@ run(function()
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
-		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'}
+		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
+		{Name = 'Broadcast', Tooltip = '.broadcast'}
 	}
 	
 	local function handleView(args)
@@ -7528,6 +7541,7 @@ run(function()
 		rj = handleRejoin,
 		rejoin = handleRejoin,
 		reload = handleReload,
+		broadcast = handleBroadcast,
 		debugnet = handleDebugNetworkOwner,
 		debugnetworkowner = handleDebugNetworkOwner,
 	}
