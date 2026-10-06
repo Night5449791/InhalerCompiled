@@ -4326,9 +4326,11 @@ run(function()
 	end
 	
 	-- the plain kick. both modes run through this so killfling flings exactly the
-	-- same way normal does, it only differs in when it is allowed to fire
-	local function kickTarget(seat, now)
-		local target = getTarget(seat, now)
+	-- same way normal does, it only differs in when it is allowed to fire.
+	-- entity skips the lookup, killfling has to keep the corpse it picked because
+	-- dying fires EntityRemoved and drops it from tempList before we get to fling
+	local function kickTarget(seat, now, entity)
+		local target = entity or getTarget(seat, now)
 		if not target then return end
 	
 		flingSeat(seat, target.RootPart)
@@ -4545,16 +4547,15 @@ run(function()
 									local state = getPendingState(pending)
 	
 									if state == 'dead' then
-										-- same kick normal mode does, plus every body part we can take
-										local target = kickTarget(seat, now)
-										if not target then continue end
+										-- same kick normal mode does, on the corpse we held on to
+										if not kickTarget(seat, now, pending) then continue end
 	
 										pendingKills[seat] = nil
-										lastFling[target.Player.Name] = now
+										lastFling[pending.Player.Name] = now
 										flung = true
-										flungHumanoid = target.Humanoid
-										notif('KickExploit', 'Attempted fling: '..target.Player.Name, 5)
-										flingBodyParts(target.RootPart)
+										flungHumanoid = pending.Humanoid
+										notif('KickExploit', 'Attempted fling: '..pending.Player.Name, 5)
+										flingBodyParts(pending.RootPart)
 										continue
 									end
 	
