@@ -1228,7 +1228,7 @@ run(function()
 	-- broadcast spam hands the client an animation id it cannot resolve, the engine
 	-- then logs one warning per attempt and the console has to render every single
 	-- line, that flood is what actually kills the client
-	local ANIMATION_FAILURE = 'failed to play animation'
+	local ANIMATION_FAILURE = 'Failed to play animation'
 	local CLEAR_INTERVAL = 0.5
 	
 	-- MessageOut only reports, the line is already in the log by the time it fires,
@@ -3993,21 +3993,6 @@ run(function()
 		Visible = false,
 		Darker = true,
 		Tooltip = 'Discord webhook url the cheater changes get posted to'
-	})
-	
-	local addBox
-	addBox = CheaterDetector:CreateTextBox({
-		Name = 'Add cheater',
-		Placeholder = 'DisplayName',
-		Player = true,
-		Tooltip = 'Adds a player to the local cheater list\n"DisplayName reason"',
-		Function = function(enter)
-			if not enter then return end
-	
-			local text = addBox.Value
-			addBox:SetValue('')
-			editCheater(text)
-		end
 	})
 	
 	CheaterDetector:CreateButton({

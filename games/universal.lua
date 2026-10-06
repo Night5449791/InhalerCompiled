@@ -7856,7 +7856,6 @@ end)
 run(function()
 	local UniversalBroadcast
 	local Message
-	local Delay
 	
 	local DEFAULT_MESSAGE = 'join https://discord.gg/bMZ4BSUR47 get better exploits or have fun :v'
 	local animation
@@ -7894,7 +7893,8 @@ run(function()
 						end
 					end
 	
-					task.wait(Delay.Value)
+					-- synced to the frame instead of a timer, one animation per heartbeat
+					runService.Heartbeat:Wait()
 				end
 	
 				if track then
@@ -7914,16 +7914,6 @@ run(function()
 		Name = 'Message',
 		Placeholder = 'Message',
 		Tooltip = 'leave it blank to use preset'
-	})
-	
-	Delay = UniversalBroadcast:CreateSlider({
-		Name = 'Delay',
-		Min = 0.05,
-		Max = 1,
-		Default = 0.2,
-		Decimal = 100,
-		Suffix = 's',
-		Tooltip = 'Time between each animation, lower = more lag but also more local fps loss'
 	})
 	
 end)
