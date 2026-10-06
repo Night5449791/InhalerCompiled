@@ -3959,7 +3959,7 @@ run(function()
 	})
 	local pendingKills = setmetatable({}, {
 		__mode = 'k'
-	}) -- seat -> Player, killfling targets waiting to die
+	}) -- seat -> {Player, Humanoid, RootPart}, killfling targets waiting to die
 	local leftCache = {} -- target names remembered after they leave; re-added on rejoin
 	table.clear(leftCache)
 	local CYAN = BrickColor.new('Cyan')
@@ -4098,17 +4098,21 @@ run(function()
 		end
 	end
 	
-	local function getCorpse(plr)
-		for _, entity in entitylib.List do
-			if entity.Player ~= plr then continue end
-			local humanoid = entity.Humanoid
-			if humanoid.Health > 0 then continue end
-			if humanoid.Sit and humanoid.SeatPart.Anchored then continue end
-			if not entity.RootPart:IsDescendantOf(workspace) then continue end
-			return entity
+	-- entitylib swaps the character out on respawn, so hold on to the real parts
+	-- instead of re-scanning for a corpse that may already be gone
+	local function getPendingState(pending)
+		if not pcall(function()
+			return pending.RootPart.Parent
+		end) or not pending.RootPart:IsDescendantOf(workspace) then
+			return 'gone'
 		end
 	
-		return
+		local success, health = pcall(function()
+			return pending.Humanoid.Health
+		end)
+		if not success then return 'gone' end
+	
+		return health > 0 and 'alive' or 'dead'
 	end
 	
 	-- the chunk env is not always the executor env, these live on the real global table
@@ -4156,8 +4160,8 @@ run(function()
 			end
 		end
 	
-		for seat, target in pendingKills do
-			if target == plr then
+		for seat, pending in pendingKills do
+			if pending.Player == plr then
 				pendingKills[seat] = nil
 			end
 		end
@@ -4335,31 +4339,41 @@ run(function()
 							owned = true
 	
 							if killfling then
-								local plr = pendingKills[seat]
-								if not plr then
-									local target = getTarget(seat, now)
-									if not target then continue end
-									plr = target.Player
+								local pending = pendingKills[seat]
 	
-									if target.Humanoid.Health > 0 then
-										pendingKills[seat] = plr
-										waiting = true
+								if pending then
+									local state = getPendingState(pending)
+	
+									if state == 'dead' then
+										-- dead, fling the body with the exact same fling normal mode uses
+										pendingKills[seat] = nil
+										lastFling[pending.Player.Name] = now
+										flung = true
+										flungHumanoid = pending.Humanoid
+										notif('KickExploit', 'Attempted fling: '..pending.Player.Name, 5)
+										flingSeat(seat, pending.RootPart)
 										continue
 									end
-								end
 	
-								local corpse = getCorpse(plr)
-								if not corpse then
+									if state == 'gone' then
+										-- died and respawned before we could fling, grab someone else
+										pendingKills[seat] = nil
+										continue
+									end
+	
 									waiting = true
 									continue
 								end
 	
-								pendingKills[seat] = nil
-								lastFling[plr.Name] = now
-								flung = true
-								flungHumanoid = corpse.Humanoid
-								notif('KickExploit', 'Attempted fling: '..plr.Name, 5)
-								flingSeat(seat, corpse.RootPart)
+								local target = getTarget(seat, now)
+								if not target then continue end
+	
+								pendingKills[seat] = {
+									Player = target.Player,
+									Humanoid = target.Humanoid,
+									RootPart = target.RootPart
+								}
+								waiting = true
 								continue
 							end
 	
