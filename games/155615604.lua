@@ -3084,13 +3084,6 @@ run(function()
 		end
 	end
 	
-	local kickMethods = {
-		normal = 'Normal',
-		kill = 'Killfling',
-		killfling = 'Killfling',
-		head = 'Killfling',
-		headfling = 'Killfling'
-	}
 	local kickTeams = {}
 	local kickTeamMembers = {}
 	
@@ -3205,31 +3198,6 @@ run(function()
 		startKick('Individual', 'Flinging '..table.concat(names, ', ')..'.')
 	end
 	
-	local function handleKickMethod(args)
-		if not options.Kick.Enabled then return end
-	
-		local module = kickModule()
-		if not module then
-			notif('ChatCommand', 'KickExploit is not available in this game.', 5, 'warning')
-			return
-		end
-	
-		local method = trim(args)
-		if not method or method == '' then return end
-	
-		local option = module.Options and module.Options['Kick Mode']
-		if not option or not option.SetValue then return end
-	
-		local mode = kickMethods[method:lower()]
-		if not mode then
-			notif('KickExploit', 'Invalid method. (normal/killfling)', 5, 'warning')
-			return
-		end
-	
-		option:SetValue(mode)
-		notif('KickExploit', 'Kick method: '..mode, 5)
-	end
-	
 	-- Movement / camera commands
 	
 	local function handleTP(args)
@@ -3284,7 +3252,7 @@ run(function()
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/killfling>'},
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>'},
 		{Name = 'Broadcast', Tooltip = '.broadcast'},
 		{Name = 'Dance', Tooltip = '.dance\n.dundance'}
 	}
@@ -3330,7 +3298,6 @@ run(function()
 		end,
 		kick = handleKick,
 		kickteam = handleKickTeam,
-		kickmethod = handleKickMethod,
 		team = handleTeam,
 		hop = handleHop,
 		rj = handleRejoin,
@@ -4118,7 +4085,6 @@ run(function()
 	local PlayerLimit
 	local TimeLimit
 	local HopList
-	local KickMode
 	local ViewTarget
 	local seats = {}
 	local spawners = {}
@@ -4130,9 +4096,6 @@ run(function()
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
-	local pendingKills = setmetatable({}, {
-		__mode = 'k'
-	}) -- seat -> Player, killfling targets waiting to die
 	local leftCache = {} -- target names remembered after they leave; re-added on rejoin
 	table.clear(leftCache)
 	local CYAN = BrickColor.new('Cyan')
@@ -4271,19 +4234,6 @@ run(function()
 		end
 	end
 	
-	local function getCorpse(plr)
-		for _, entity in entitylib.List do
-			if entity.Player ~= plr then continue end
-			local humanoid = entity.Humanoid
-			if humanoid.Health > 0 then continue end
-			if humanoid.Sit and humanoid.SeatPart.Anchored then continue end
-			if not entity.RootPart:IsDescendantOf(workspace) then continue end
-			return entity
-		end
-	
-		return
-	end
-	
 	-- the chunk env is not always the executor env, these live on the real global table
 	local function setMaxSimRadius()
 		local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
@@ -4329,12 +4279,6 @@ run(function()
 			end
 		end
 	
-		for seat, target in pendingKills do
-			if target == plr then
-				pendingKills[seat] = nil
-			end
-		end
-	
 		if not table.find(List.List, plr.Name) then return end
 	
 		List:ChangeValue(plr.Name)
@@ -4364,8 +4308,6 @@ run(function()
 				local backpack
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
-	
-				KickMode.Object.Visible = Equipment.Enabled
 	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
@@ -4498,43 +4440,13 @@ run(function()
 						return
 					end
 	
-					local owned, flung, waiting, flungHumanoid
-					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
+					local owned, flung, flungHumanoid
 	
 					setMaxSimRadius()
 	
 					for _, seat in seats do
 						if isNetworkOwned(seat) then
 							owned = true
-	
-							if killfling then
-								local plr = pendingKills[seat]
-								if not plr then
-									local target = getTarget(seat, now)
-									if not target then continue end
-									plr = target.Player
-	
-									if target.Humanoid.Health > 0 then
-										pendingKills[seat] = plr
-										waiting = true
-										continue
-									end
-								end
-	
-								local corpse = getCorpse(plr)
-								if not corpse then
-									waiting = true
-									continue
-								end
-	
-								pendingKills[seat] = nil
-								lastFling[plr.Name] = now
-								flung = true
-								flungHumanoid = corpse.Humanoid
-								notif('KickExploit', 'Attempted fling: '..plr.Name, 5)
-								flingSeat(seat, corpse.RootPart)
-								continue
-							end
 	
 							local target = getTarget(seat, now)
 							if not target then continue end
@@ -4553,14 +4465,13 @@ run(function()
 						restoreCamera()
 					end
 	
-					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
+					if not flung and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
 				end))
 			else
 				table.clear(tempList)
-				table.clear(pendingKills)
 				table.clear(teamButtons)
 				restoreCamera()
 			end
@@ -4588,16 +4499,7 @@ run(function()
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
-		Function = function(callback)
-			KickMode.Object.Visible = callback
-		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
-	})
-	KickMode = KickExploit:CreateDropdown({
-		Name = 'Kick Mode',
-		List = {'Normal', 'Killfling'},
-		Visible = false,
-		Darker = true
 	})
 	ViewTarget = KickExploit:CreateToggle({
 		Name = 'ViewTarget',
