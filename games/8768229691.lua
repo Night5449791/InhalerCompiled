@@ -793,7 +793,7 @@ run(function()
 								local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
 								if angle > (math.rad(AngleCheck.Value) / 2) then continue end
 								table.insert(attacked, v)
-								targetinfo.Targets[v] = tick() + 1
+								targetinfo.Targets[v] = os.clock() + 1
 	
 								if not Swing.Enabled then
 									skywars.MeleeController:playAnimation(lplr.Character, tool)
@@ -1129,7 +1129,7 @@ run(function()
 				local calc = prediction.SolveTrajectory(offsetpos.Position, 200, math.abs(skywars.Gravity), plr[TargetPart.Value].Position, plr[TargetPart.Value].Velocity, workspace.Gravity, plr.HipHeight, nil, rayCheck)
 	
 				if calc then
-					targetinfo.Targets[plr] = tick() + 1
+					targetinfo.Targets[plr] = os.clock() + 1
 					return CFrame.new(offsetpos.Position, calc).LookVector
 				end
 			end
