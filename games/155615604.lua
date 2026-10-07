@@ -3075,13 +3075,22 @@ run(function()
 		local module = kickModule()
 		if not module then return end
 	
-		return (module.Options and module.Options['KickMode']) or module.KickMode
+		return (module.Options and module.Options['Kick Mode']) or module.KickMode
 	end
 	
 	local function setKickMethod(method)
 		local option = kickMethodOption()
 		if option and option.SetValue then
 			option:SetValue(method)
+		end
+	
+		-- headfling only runs while Equipment is on, it supplies the gun that kills the target
+		if method == 'Headfling' then
+			local module = kickModule()
+			local equipment = module and module.Options and module.Options['Equipment']
+			if equipment and not equipment.Enabled then
+				equipment:Toggle()
+			end
 		end
 	end
 	
@@ -4127,6 +4136,7 @@ end)
 run(function()
 	local Mode
 	local KickMode
+	local HeadOffset
 	local List
 	local Movement
 	local Equipment
@@ -4152,6 +4162,7 @@ run(function()
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
 	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
+	local HEAD_VELOCITY = Vector3.new(10000, 0, 0)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
 	
 	local seatsDirty = false
@@ -4228,11 +4239,10 @@ run(function()
 	end
 	
 	local function getTarget(seat, now)
-		local headfling = KickMode.Value == 'Headfling'
 		local cached = tempList[seat]
 		if cached then
 			local humanoid = cached.Humanoid
-			if cached.RootPart:IsDescendantOf(workspace) and not (humanoid.Sit and humanoid.SeatPart.Anchored) then
+			if cached.RootPart:IsDescendantOf(workspace) and not (humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored) then
 				return cached
 			end
 		end
@@ -4252,9 +4262,8 @@ run(function()
 				if not select(2, whitelist:get(entity.Player)) then continue end
 				if entity.Player.Team == teams.Neutral then continue end
 				if individual and not table.find(enabled, entity.Player.Name) then continue end
-				if headfling and entity.Health > 0 then continue end
 				local humanoid = entity.Humanoid
-				if humanoid.Sit and humanoid.SeatPart.Anchored then continue end
+				if humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored then continue end
 				if not entity.RootPart:IsDescendantOf(workspace) then continue end
 				if (now - entity.SpawnTime) <= 2 then continue end
 				table.insert(candidateList, entity)
@@ -4273,7 +4282,7 @@ run(function()
 		table.remove(candidateList, 1)
 		lastFling[target.Player.Name] = now
 		tempList[seat] = target
-		notif('KickExploit', 'Attempted '..(headfling and 'head ' or '')..'fling: '..target.Player.Name, 5)
+		notif('KickExploit', 'Attempted fling: '..target.Player.Name, 5)
 		return target
 	end
 	
@@ -4310,11 +4319,11 @@ run(function()
 		return success and owned
 	end
 	
-	local function flingSeat(seat, root)
-		seat.AssemblyLinearVelocity = NORMAL_VELOCITY
-		seat.CFrame = CFrame.new(root.Position) * NORMAL_OFFSET
-		sethiddenproperty(seat, 'PhysicsRepRootPart', root)
-		sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(root))
+	local function flingSeat(seat, part, velocity, cframe)
+		seat.AssemblyLinearVelocity = velocity
+		seat.CFrame = cframe
+		sethiddenproperty(seat, 'PhysicsRepRootPart', part)
+		sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
 		local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
 		if wheels then
@@ -4359,6 +4368,9 @@ run(function()
 				local backpack
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
+	
+				KickMode.Object.Visible = Equipment.Enabled
+				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Headfling'
 	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
@@ -4491,7 +4503,8 @@ run(function()
 						return
 					end
 	
-					local owned, flung, flungHumanoid
+					local owned, flung, waiting, flungHumanoid
+					local headfling = Equipment.Enabled and KickMode.Value == 'Headfling'
 	
 					setMaxSimRadius()
 	
@@ -4502,9 +4515,23 @@ run(function()
 							local target = getTarget(seat, now)
 							if not target then continue end
 	
+							-- headfling is only useful on a corpse, hold the target until it dies
+							if headfling and target.Humanoid.Health > 0 then
+								waiting = true
+								continue
+							end
+	
 							flung = true
 							flungHumanoid = target.Humanoid
-							flingSeat(seat, KickMode.Value == 'Headfling' and (target.Head or target.RootPart) or target.RootPart)
+							local useHead = headfling or target.Humanoid.Health <= 0
+							local part = useHead and (target.Head or target.RootPart) or target.RootPart
+							local targetPos = part.Position
+	
+							if useHead then
+								flingSeat(seat, part, HEAD_VELOCITY, CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z))
+							else
+								flingSeat(seat, part, NORMAL_VELOCITY, CFrame.new(targetPos) * NORMAL_OFFSET)
+							end
 						end
 					end
 	
@@ -4516,7 +4543,7 @@ run(function()
 						restoreCamera()
 					end
 	
-					if not flung and next(seats) and (now - targetTimer) > 5 then
+					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
@@ -4537,9 +4564,25 @@ run(function()
 		end
 	})
 	KickMode = KickExploit:CreateDropdown({
-		Name = 'KickMode',
+		Name = 'Kick Mode',
 		List = {'Normal', 'Headfling'},
-		Tooltip = 'Headfling grabs a dead target by the head instead of the root part, corpses only.'
+		Function = function(val)
+			HeadOffset.Object.Visible = val == 'Headfling'
+		end,
+		Visible = false,
+		Darker = true,
+		Tooltip = 'Headfling waits for the target to die, then flings it by the head.'
+	})
+	HeadOffset = KickExploit:CreateSlider({
+		Name = 'Head Offset',
+		Min = 0,
+		Max = 12,
+		Default = 1,
+		Visible = false,
+		Darker = true,
+		Suffix = function(value)
+			return value == 1 and 'stud' or 'studs'
+		end
 	})
 	List = KickExploit:CreateTextList({
 		Name = 'Targets',
@@ -4555,6 +4598,10 @@ run(function()
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
+		Function = function(callback)
+			KickMode.Object.Visible = callback
+			HeadOffset.Object.Visible = callback and KickMode.Value == 'Headfling'
+		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
 	ViewTarget = KickExploit:CreateToggle({
