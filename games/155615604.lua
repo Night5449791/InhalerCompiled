@@ -3071,6 +3071,20 @@ run(function()
 		end
 	end
 	
+	local function kickMethodOption()
+		local module = kickModule()
+		if not module then return end
+	
+		return (module.Options and module.Options['KickMode']) or module.KickMode
+	end
+	
+	local function setKickMethod(method)
+		local option = kickMethodOption()
+		if option and option.SetValue then
+			option:SetValue(method)
+		end
+	end
+	
 	addTarget = function(name, enabled)
 		setKickTarget(name, enabled)
 		setListValue(vape.Categories.Targets, name, enabled)
@@ -3163,6 +3177,39 @@ run(function()
 		startKick('Individual', 'Flinging '..player.Name..'.')
 	end
 	
+	local kickMethods = {
+		normal = 'Normal',
+		n = 'Normal',
+		headfling = 'Headfling',
+		head = 'Headfling',
+		h = 'Headfling'
+	}
+	
+	local function handleKickMethod(args)
+		if not options.Kick.Enabled then return end
+	
+		local option = kickMethodOption()
+		if not option then
+			notif('ChatCommand', 'KickExploit is not available in this game.', 5, 'warning')
+			return
+		end
+	
+		args = trim(args)
+		if not args or args == '' then
+			notif('KickExploit', 'Current kick method: '..tostring(option.Value), 5)
+			return
+		end
+	
+		local method = kickMethods[args:lower():match('^%S+$')]
+		if not method then
+			notif('KickExploit', 'Unknown kick method. (normal/headfling)', 5, 'warning')
+			return
+		end
+	
+		setKickMethod(method)
+		notif('KickExploit', 'Kick method set to '..method..(method == 'Headfling' and ', dead targets only.' or '.'), 5)
+	end
+	
 	local function handleKickTeam(args)
 		if not options.Kick.Enabled then return end
 	
@@ -3252,7 +3299,7 @@ run(function()
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>'},
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/headfling>'},
 		{Name = 'Broadcast', Tooltip = '.broadcast'},
 		{Name = 'Dance', Tooltip = '.dance\n.dundance'}
 	}
@@ -3298,6 +3345,7 @@ run(function()
 		end,
 		kick = handleKick,
 		kickteam = handleKickTeam,
+		kickmethod = handleKickMethod,
 		team = handleTeam,
 		hop = handleHop,
 		rj = handleRejoin,
@@ -4078,6 +4126,7 @@ end)
 
 run(function()
 	local Mode
+	local KickMode
 	local List
 	local Movement
 	local Equipment
@@ -4179,6 +4228,7 @@ run(function()
 	end
 	
 	local function getTarget(seat, now)
+		local headfling = KickMode.Value == 'Headfling'
 		local cached = tempList[seat]
 		if cached then
 			local humanoid = cached.Humanoid
@@ -4202,6 +4252,7 @@ run(function()
 				if not select(2, whitelist:get(entity.Player)) then continue end
 				if entity.Player.Team == teams.Neutral then continue end
 				if individual and not table.find(enabled, entity.Player.Name) then continue end
+				if headfling and entity.Health > 0 then continue end
 				local humanoid = entity.Humanoid
 				if humanoid.Sit and humanoid.SeatPart.Anchored then continue end
 				if not entity.RootPart:IsDescendantOf(workspace) then continue end
@@ -4222,7 +4273,7 @@ run(function()
 		table.remove(candidateList, 1)
 		lastFling[target.Player.Name] = now
 		tempList[seat] = target
-		notif('KickExploit', 'Attempted fling: '..target.Player.Name, 5)
+		notif('KickExploit', 'Attempted '..(headfling and 'head ' or '')..'fling: '..target.Player.Name, 5)
 		return target
 	end
 	
@@ -4453,7 +4504,7 @@ run(function()
 	
 							flung = true
 							flungHumanoid = target.Humanoid
-							flingSeat(seat, target.RootPart)
+							flingSeat(seat, KickMode.Value == 'Headfling' and (target.Head or target.RootPart) or target.RootPart)
 						end
 					end
 	
@@ -4484,6 +4535,11 @@ run(function()
 		Function = function(value)
 			List.Object.Visible = value ~= 'All'
 		end
+	})
+	KickMode = KickExploit:CreateDropdown({
+		Name = 'KickMode',
+		List = {'Normal', 'Headfling'},
+		Tooltip = 'Headfling grabs a dead target by the head instead of the root part, corpses only.'
 	})
 	List = KickExploit:CreateTextList({
 		Name = 'Targets',
