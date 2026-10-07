@@ -7915,8 +7915,8 @@ run(function()
 		Placeholder = 'Message',
 		Tooltip = 'leave it blank to use preset'
 		Function = function()
-	        UniversalLagger:Toggle()
-			UniversalLagger:Toggle()
+	        UniversalBroadcast:Toggle()
+			UniversalBroadcast:Toggle()
 	    end,
 	})
 	
