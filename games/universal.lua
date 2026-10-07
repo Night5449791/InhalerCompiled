@@ -7924,7 +7924,7 @@ run(function()
 	Message = UniversalBroadcast:CreateTextBox({
 		Name = 'Message',
 		Placeholder = 'Message',
-		Tooltip = 'leave it blank to use preset'
+		Tooltip = 'leave it blank to use preset',
 		Function = function()
 	        UniversalBroadcast:Toggle()
 			UniversalBroadcast:Toggle()
