@@ -7672,68 +7672,12 @@ end)
 run(function()
 	local ServerHop
 	local Sort
-	local AvoidJoined
-	
-	local JOBID_PATH = 'newvape/serverhop.txt'
-	local joinedList, joinedSet = {}, {}
-	local avoidJoined = true
-	
-	-- `attempted` is the skip list serverHop() checks, feeding it the joined servers
-	-- is what keeps the hop away from servers we already visited
-	local function filterJoinedServers()
-		for index = #attempted, 1, -1 do
-			if joinedSet[attempted[index]] then
-				table.remove(attempted, index)
-			end
-		end
-	
-		if not avoidJoined then return end
-	
-		for _, id in joinedList do
-			if not table.find(attempted, id) then
-				table.insert(attempted, id)
-			end
-		end
-	end
-	
-	local function logJobId(id)
-		if not id or id == '' or joinedSet[id] then return end
-	
-		joinedSet[id] = true
-		table.insert(joinedList, id)
-		if #joinedList > 200 then
-			joinedSet[table.remove(joinedList, 1)] = nil
-		end
-	
-		if avoidJoined and not table.find(attempted, id) then
-			table.insert(attempted, id)
-		end
-	
-		pcall(writefile, JOBID_PATH, table.concat(joinedList, '\n'))
-	end
-	
-	local success, data = pcall(readfile, JOBID_PATH)
-	if success and type(data) == 'string' then
-		for id in data:gmatch('%S+') do
-			if not joinedSet[id] then
-				joinedSet[id] = true
-				table.insert(joinedList, id)
-			end
-		end
-	end
-	
-	logJobId(game.JobId)
-	vape:Clean(lplr.OnTeleport:Connect(function()
-		logJobId(game.JobId)
-	end))
 	
 	ServerHop = vape.Categories.Utility:CreateModule({
 		Name = 'ServerHop',
 		Function = function(callback)
 			if callback then
 				ServerHop:Toggle()
-				logJobId(game.JobId)
-				filterJoinedServers()
 				serverHop(nil, Sort.Value)
 			end
 		end,
@@ -7743,15 +7687,6 @@ run(function()
 		Name = 'Sort',
 		List = {'Descending', 'Ascending'},
 		Tooltip = 'Descending - Prefers full servers\nAscending - Prefers empty servers'
-	})
-	AvoidJoined = ServerHop:CreateToggle({
-		Name = 'Avoid Joined Servers',
-		Default = true,
-		Function = function(callback)
-			avoidJoined = callback
-			filterJoinedServers()
-		end,
-		Tooltip = 'Logs the job id of every server you join and skips those servers while hopping.'
 	})
 	ServerHop:CreateButton({
 		Name = 'Rejoin Previous Server',
@@ -7763,17 +7698,6 @@ run(function()
 			end
 		end
 	})
-	ServerHop:CreateButton({
-		Name = 'Clear Joined Servers',
-		Function = function()
-			filterJoinedServers()
-			table.clear(joinedList)
-			table.clear(joinedSet)
-			pcall(writefile, JOBID_PATH, '')
-			notif('ServerHop', 'Cleared the joined server log.', 5)
-		end
-	})
-	
 end)
 
 run(function()
@@ -7991,115 +7915,6 @@ run(function()
 		Placeholder = 'Message',
 		Tooltip = 'leave it blank to use preset'
 	})
-	
-end)
-
-run(function()
-	local UserSnipe
-	local Username
-	local DisplayName
-	local Sort
-	
-	-- matches against the live player list using the username and/or display name
-	local function findTarget()
-		local name = (Username.Value or ''):lower():gsub('%s+', '')
-		local display = (DisplayName.Value or ''):lower():gsub('%s+', '')
-	
-		if name == '' and display == '' then
-			return nil
-		end
-	
-		for _, plr in playersService:GetPlayers() do
-			if plr == lplr then continue end
-	
-			local pname = plr.Name:lower()
-			local pdisplay = plr.DisplayName:lower()
-	
-			if (name ~= '' and pname == name) or (display ~= '' and pdisplay == display) then
-				return plr
-			end
-		end
-	
-		return nil
-	end
-	
-	local function finishSnipe(target)
-		notif('UserSnipe', 'Found '..target.Name..' ('..target.DisplayName..') in this server.', 10)
-		shared.vapeusersnipe = nil
-		UserSnipe:Toggle()
-	end
-	
-	UserSnipe = vape.Categories.World:CreateModule({
-		Name = 'UserSnipe',
-		Function = function(callback)
-			if callback then
-				-- restore the inputs from the last run so the search survives a teleport
-				if (Username.Value == '' and DisplayName.Value == '') and shared.vapeusersnipe then
-					Username:SetValue(shared.vapeusersnipe.name or '')
-					DisplayName:SetValue(shared.vapeusersnipe.display or '')
-				end
-	
-				local name = (Username.Value or ''):gsub('%s+', '')
-				local display = (DisplayName.Value or ''):gsub('%s+', '')
-	
-				if name == '' and display == '' then
-					notif('UserSnipe', 'Enter a username or display name first.', 5, 'warning')
-					UserSnipe:Toggle()
-					return
-				end
-	
-				shared.vapeusersnipe = {
-					name = name,
-					display = display
-				}
-	
-				local target = findTarget()
-				if target then
-					finishSnipe(target)
-					return
-				end
-	
-				task.spawn(function()
-					-- give the server a moment to populate the player list before hopping
-					task.wait(2)
-	
-					local found = findTarget()
-					if found then
-						finishSnipe(found)
-						return
-					end
-	
-					notif('UserSnipe', 'Not in this server, hopping...', 3)
-					serverHop(nil, Sort.Value)
-				end)
-			else
-				shared.vapeusersnipe = nil
-			end
-		end,
-		Tooltip = 'Spams serverhop until the target username or display name shows up in a server, then lands you there.'
-	})
-	Username = UserSnipe:CreateTextBox({
-		Name = 'Username',
-		Placeholder = 'Target username'
-	})
-	DisplayName = UserSnipe:CreateTextBox({
-		Name = 'Display Name',
-		Placeholder = 'Target display name'
-	})
-	Sort = UserSnipe:CreateDropdown({
-		Name = 'Sort',
-		List = {'Descending', 'Ascending'},
-		Tooltip = 'Descending - Prefers full servers\nAscending - Prefers empty servers'
-	})
-	
-	-- resume the search after a teleport (shared persists across the hop)
-	if shared.vapeusersnipe then
-		task.spawn(function()
-			if not UserSnipe.Enabled then
-				UserSnipe:Toggle()
-			end
-		end)
-	end
 	
 end)
 
