@@ -3254,6 +3254,41 @@ run(function()
 		startKick('Individual', 'Flinging '..table.concat(names, ', ')..'.')
 	end
 	
+	local function handleKickSkid(args)
+		if not (options.Kick.Enabled and options.Cheater.Enabled) then
+			notif('ChatCommand', 'Kick and Cheater are both needed for .kickskid.', 5, 'warning')
+			return
+		end
+	
+		local cheater = vape.Modules and vape.Modules.CheaterDetector
+		if not (cheater and cheater.AddCheater) then
+			notif('ChatCommand', 'CheaterDetector is not available in this game.', 5, 'warning')
+			return
+		end
+	
+		if not kickModule() then
+			notif('ChatCommand', 'KickExploit is not available in this game.', 5, 'warning')
+			return
+		end
+	
+		args = trim(args)
+		if not args or args == '' then
+			notif('ChatCommand', 'No player given. (.kickskid <plr> <reason>)', 5, 'warning')
+			return
+		end
+	
+		local plr, reason = cheater:FindCheater(args)
+		if not plr then
+			notif('KickExploit', 'No player found.', 5, 'warning')
+			return
+		end
+	
+		-- the name is passed instead of the raw text, the split already resolved it
+		cheater:AddCheater(plr.Name, trim(reason))
+		addTarget(plr.Name, true)
+		startKick('Individual', 'Flinging '..plr.Name..'.')
+	end
+	
 	-- Movement / camera commands
 	
 	local function handleTP(args)
@@ -3307,7 +3342,7 @@ run(function()
 		{Name = 'ChangeTeam', Tooltip = '.team <name>'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
-		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>'},
+		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>\n.kickskid <plr> <reason>'},
 		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/headfling>'},
 		{Name = 'Broadcast', Tooltip = '.broadcast'},
 		{Name = 'Dance', Tooltip = '.dance\n.dundance'}
@@ -3355,6 +3390,7 @@ run(function()
 		kick = handleKick,
 		kickteam = handleKickTeam,
 		kickmethod = handleKickMethod,
+		kickskid = handleKickSkid,
 		team = handleTeam,
 		hop = handleHop,
 		rj = handleRejoin,
@@ -3387,7 +3423,10 @@ run(function()
 		local handler = commands[command]
 		if handler then
 			handler(args ~= '' and args or nil)
+			return true
 		end
+	
+		return false
 	end
 	
 	ChatCommand = vape.Categories.Utility:CreateModule({
@@ -3439,7 +3478,10 @@ run(function()
 		Tooltip = 'Runs a chat command without opening the chat. Press Enter to execute.',
 		Function = function(enter)
 			if enter and CommandBox and CommandBox.Value ~= '' then
-				onChatted(CommandBox.Value)
+				-- the command never reaches the chat, so the box is emptied to show it ran
+				if onChatted(CommandBox.Value) then
+					CommandBox:SetValue('')
+				end
 			end
 		end
 	})
@@ -3974,6 +4016,16 @@ run(function()
 	
 	function CheaterDetector:RemoveCheater(text)
 		editCheater(text, nil, true)
+	end
+	
+	-- other modules use this to split "<display name> <reason>" the same way,
+	-- returns the player (nil when nobody online matches), the reason that
+	-- followed and the matched name
+	function CheaterDetector:FindCheater(text)
+		text = trimText(text)
+		if not text or text == '' then return end
+	
+		return splitCheaterText(text)
 	end
 	
 	cheaterOptions.Notifications = CheaterDetector:CreateToggle({
