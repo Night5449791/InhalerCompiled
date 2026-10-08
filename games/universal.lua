@@ -1016,7 +1016,7 @@ run(function()
 							new = new == new and new or Vector3.zero
 	
 							if ShowTarget.Enabled then
-								targetinfo.Targets[entity] = tick() + 1
+								targetinfo.Targets[entity] = os.clock() + 1
 							end
 	
 							if new ~= Vector3.zero then
@@ -1344,7 +1344,7 @@ run(function()
 		})
 
 		if entity then
-			targetinfo.Targets[entity] = tick() + 1
+			targetinfo.Targets[entity] = os.clock() + 1
 
 			if Projectile.Enabled then
 				ProjectileRaycast.FilterDescendantsInstances = {gameCamera, entity.Character}

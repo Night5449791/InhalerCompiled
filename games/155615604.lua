@@ -835,7 +835,7 @@ run(function()
 		})
 
 		if entity then
-			targetinfo.Targets[entity] = tick() + 1
+			targetinfo.Targets[entity] = os.clock() + 1
 		end
 
 		return entity, entity and entity[targetPart]
@@ -1779,7 +1779,7 @@ run(function()
 								local delta = (entity.RootPart.Position - selfpos) * flatMask
 								if math.acos(localfacing:Dot(delta.Unit)) > maxAngle then continue end
 	
-								targetinfo.Targets[entity] = tick() + 1
+								targetinfo.Targets[entity] = os.clock() + 1
 								table.insert(attacked, {
 									Entity = entity,
 									Check = BoxAttackColor
@@ -4167,6 +4167,7 @@ run(function()
 end)
 
 run(function()
+	local KickExploit
 	local Mode
 	local KickMode
 	local HeadOffset
@@ -4563,6 +4564,9 @@ run(function()
 							if useHead then
 								flingSeat(seat, part, HEAD_VELOCITY, CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z))
 							else
+								-- upstream zeroes the root velocity first, otherwise the target
+								-- drifts off before the seat takes over its physics
+								target.RootPart.AssemblyLinearVelocity = Vector3.zero
 								flingSeat(seat, part, NORMAL_VELOCITY, CFrame.new(targetPos) * NORMAL_OFFSET)
 							end
 						end
