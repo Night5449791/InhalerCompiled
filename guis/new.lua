@@ -4541,7 +4541,7 @@ components = {
 		
 			task.spawn(function()
 				tooltip.Text = 'Copied!'
-				setclipboard('https://discord.gg/VZEQJxMSnG')
+				setclipboard('https://discord.gg/YSzD7f9neR')
 			end)
 		end)
 		
