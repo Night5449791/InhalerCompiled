@@ -4188,6 +4188,9 @@ run(function()
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
+	local launched = setmetatable({}, {
+		__mode = 'k'
+	}) -- corpses already thrown, they are left alone so they stop following the car
 	local leftCache = {} -- target names remembered after they leave; re-added on rejoin
 	table.clear(leftCache)
 	local CYAN = BrickColor.new('Cyan')
@@ -4197,6 +4200,9 @@ run(function()
 	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
 	local KILL_VELOCITY = Vector3.new(10000, 0, 10000)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
+	-- how long a corpse gets pushed before the seat lets go, past this the tethered
+	-- corpse just follows the car around instead of flying off
+	local CORPSE_WINDOW = 0.5
 	
 	local seatsDirty = false
 	
@@ -4299,6 +4305,13 @@ run(function()
 				if humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored then continue end
 				if not entity.RootPart:IsDescendantOf(workspace) then continue end
 				if (now - entity.SpawnTime) <= 2 then continue end
+				if launched[entity] then
+					if humanoid.Health > 0 then
+						launched[entity] = nil -- respawned, it can be thrown again
+					else
+						continue -- already thrown, grabbing it again just reels it back in
+					end
+				end
 				table.insert(candidateList, entity)
 			end
 	
@@ -4320,6 +4333,8 @@ run(function()
 	end
 	
 	local function clearEntity(entity)
+		launched[entity] = nil
+	
 		for seat, target in tempList do
 			if target == entity then
 				tempList[seat] = nil
@@ -4353,8 +4368,12 @@ run(function()
 	end
 	
 	local function flingSeat(seat, part, velocity, cframe)
-		seat.AssemblyLinearVelocity = velocity
+		-- whatever momentum the part carries (falling, driving, previous kick) fights the
+		-- launch and just drags it along, clear it first
+		part.AssemblyLinearVelocity = Vector3.zero
 		seat.CFrame = cframe
+		-- velocity has to be written after the cframe, moving an assembly root resets it
+		seat.AssemblyLinearVelocity = velocity
 		sethiddenproperty(seat, 'PhysicsRepRootPart', part)
 		sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
@@ -4369,6 +4388,12 @@ run(function()
 		for seat, target in tempList do
 			if target.Player == plr then
 				tempList[seat] = nil
+			end
+		end
+	
+		for entity in launched do
+			if entity.Player == plr then
+				launched[entity] = nil
 			end
 		end
 	
@@ -4560,11 +4585,22 @@ run(function()
 								-- 30c46d0 behaviour, the head is the part that carries the corpse
 								local part = target.Head or target.RootPart
 								local targetPos = part.Position
+								local pushed = launched[target]
+	
+								if pushed and (now - pushed) > CORPSE_WINDOW then
+									-- tethering the corpse past the launch window only makes it follow
+									-- the car around, let go so the velocity carries it out
+									tempList[seat] = nil
+									continue
+								end
+	
+								-- ownership is dropped the moment the player dies, nobody is left to
+								-- fight over the corpse so the fling goes straight out
+								launched[target] = pushed or now
 								flingSeat(seat, part, KILL_VELOCITY, CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12))
 							else
-								-- upstream zeroes the root velocity first, otherwise the target
-								-- drifts off before the seat takes over its physics
-								target.RootPart.AssemblyLinearVelocity = Vector3.zero
+								-- the target normally sits in its own car, its own velocity drags it
+								-- back out of the seat before the assembly takes over (cleared in flingSeat)
 								flingSeat(seat, target.RootPart, NORMAL_VELOCITY, CFrame.new(target.RootPart.Position) * NORMAL_OFFSET)
 							end
 						end
@@ -4585,6 +4621,7 @@ run(function()
 				end))
 			else
 				table.clear(tempList)
+				table.clear(launched)
 				table.clear(teamButtons)
 				restoreCamera()
 			end
