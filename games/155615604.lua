@@ -4192,7 +4192,6 @@ run(function()
 		__mode = 'k'
 	}) -- corpses already thrown, they are left alone so they stop following the car
 	local leftCache = {} -- target names remembered after they leave; re-added on rejoin
-	table.clear(leftCache)
 	local CYAN = BrickColor.new('Cyan')
 	local GUN_POSITION = Vector3.new(816, 98, 2233)
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
@@ -4203,6 +4202,8 @@ run(function()
 	-- how long a corpse gets pushed before the seat lets go, past this the tethered
 	-- corpse just follows the car around instead of flying off
 	local CORPSE_WINDOW = 0.5
+	-- ownership barely ever flips, this is how often it gets rechecked per part
+	local OWNERSHIP_CACHE = 0.25
 	
 	local seatsDirty = false
 	
@@ -4343,28 +4344,48 @@ run(function()
 	end
 	
 	-- the chunk env is not always the executor env, these live on the real global table
-	local function setMaxSimRadius()
-		local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
-		local setsim = (getgenv and getgenv().setsimulationradius) or _G.setsimulationradius or setsimulationradius
+	local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
+	local setsim = (getgenv and getgenv().setsimulationradius) or _G.setsimulationradius or setsimulationradius
+	local isnetowner = (getgenv and getgenv().isnetworkowner) or _G.isnetworkowner or isnetworkowner
 	
-		if typeof(sethidden) == 'function' then
+	-- resolved once, the hot paths below run every frame and should not be doing
+	-- global lookups or typeof checks over and over
+	sethidden = typeof(sethidden) == 'function' and sethidden or nil
+	setsim = typeof(setsim) == 'function' and setsim or nil
+	isnetowner = typeof(isnetowner) == 'function' and isnetowner or nil
+	
+	local function setMaxSimRadius()
+		if sethidden then
 			pcall(sethidden, lplr, 'SimulationRadius', 1e9)
 			pcall(sethidden, lplr, 'MaximumSimulationRadius', 1e9)
 		end
 	
-		if typeof(setsim) == 'function' then
+		if setsim then
 			pcall(setsim, 1e9)
 		end
 	end
 	
+	-- ownership rarely flips, rechecking every part every frame is wasted pcalls
+	local ownedList = setmetatable({}, {
+		__mode = 'k'
+	})
+	
 	-- isnetworkowner only reports ownership inside the simulation radius, so
 	-- setMaxSimRadius has to run first
-	local function isNetworkOwned(part)
-		local isnetowner = (getgenv and getgenv().isnetworkowner) or _G.isnetworkowner or isnetworkowner
-		if typeof(isnetowner) ~= 'function' then return true end
+	local function isNetworkOwned(part, now)
+		local cached = ownedList[part]
+		if cached and cached[1] > now then
+			return cached[2]
+		end
 	
-		local success, owned = pcall(isnetowner, part)
-		return success and owned
+		local owned = true
+		if isnetowner then
+			local success, result = pcall(isnetowner, part)
+			owned = success and result
+		end
+	
+		ownedList[part] = {now + OWNERSHIP_CACHE, owned}
+		return owned
 	end
 	
 	local function flingSeat(seat, part, velocity, cframe)
@@ -4374,9 +4395,10 @@ run(function()
 		seat.CFrame = cframe
 		-- velocity has to be written after the cframe, moving an assembly root resets it
 		seat.AssemblyLinearVelocity = velocity
-		sethiddenproperty(seat, 'PhysicsRepRootPart', part)
-		sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
+		sethidden(seat, 'PhysicsRepRootPart', part)
+		sethidden(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 	
+		-- wheels anchor the assembly down, the car has to be free to carry the target
 		local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
 		if wheels then
 			wheels:Destroy()
@@ -4470,6 +4492,12 @@ run(function()
 	
 				KickExploit:Clean(runService.Heartbeat:Connect(function(dt)
 					local now = os.clock()
+					-- snapshot the toggles for the frame, they can't change mid-tick anyway
+					local mode = Mode.Value
+					local equipment = Equipment.Enabled
+					local movement = Movement.Enabled
+					local autoRejoin = AutoRejoin.Enabled
+					local viewTarget = ViewTarget.Enabled
 	
 					if seatsDirty then
 						refreshSeats()
@@ -4490,7 +4518,7 @@ run(function()
 						return
 					end
 	
-					if AutoRejoin.Enabled then
+					if autoRejoin then
 						if (now - countTimer) > 0.5 then
 							countTimer = now
 							playerCount = getPlayerCount()
@@ -4534,10 +4562,10 @@ run(function()
 						dir = math.clamp(dir + (math.clamp(-dir, -1, 1) * dt * 24), -12, 14)
 					end
 	
-					if Movement.Enabled then
+					if movement then
 						local spawnTime = entitylib.character.SpawnTime
 	
-						if Equipment.Enabled and (now - spawnTime) < 2 then
+						if equipment and (now - spawnTime) < 2 then
 							backpack = backpack or lplr:FindFirstChildWhichIsA('Backpack')
 							local btool = backpack and backpack:FindFirstChildWhichIsA('Tool') or nil
 							local ltool = lplr.Character:FindFirstChildWhichIsA('Tool')
@@ -4554,19 +4582,19 @@ run(function()
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
-					if Mode.Value == 'Individual' and not next(List.ListEnabled) and not next(leftCache) then
+					if mode == 'Individual' and not next(List.ListEnabled) and not next(leftCache) then
 						notif('KickExploit', 'No targets left, disabling.', 5)
 						KickExploit:Toggle()
 						return
 					end
 	
 					local owned, flung, waiting, flungHumanoid
-					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
+					local killfling = equipment and KickMode.Value == 'Killfling'
 	
 					setMaxSimRadius()
 	
 					for _, seat in seats do
-						if isNetworkOwned(seat) then
+						if isNetworkOwned(seat, now) then
 							owned = true
 	
 							local target = getTarget(seat, now)
@@ -4608,7 +4636,7 @@ run(function()
 						end
 					end
 	
-					if ViewTarget.Enabled and flungHumanoid then
+					if viewTarget and flungHumanoid then
 						gameCamera.CameraSubject = flungHumanoid
 						viewing = true
 					elseif viewing then
