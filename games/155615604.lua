@@ -2749,8 +2749,8 @@ run(function()
 			option:SetValue(method)
 		end
 	
-		-- headfling only runs while Equipment is on, it supplies the gun that kills the target
-		if method == 'Headfling' then
+		-- killfling only runs while Equipment is on, it supplies the gun that kills the target
+		if method == 'Killfling' then
 			local equipment = kickOption('Equipment')
 			if equipment and not equipment.Enabled then
 				equipment:Toggle()
@@ -3162,9 +3162,9 @@ run(function()
 	local kickMethods = {
 		normal = 'Normal',
 		n = 'Normal',
-		headfling = 'Headfling',
-		head = 'Headfling',
-		h = 'Headfling'
+		killfling = 'Killfling',
+		kill = 'Killfling',
+		k = 'Killfling'
 	}
 	
 	local function handleKickMethod(args)
@@ -3184,12 +3184,12 @@ run(function()
 	
 		local method = kickMethods[args:lower():match('^%S+$')]
 		if not method then
-			notif('KickExploit', 'Unknown kick method. (normal/headfling)', 5, 'warning')
+			notif('KickExploit', 'Unknown kick method. (normal/killfling)', 5, 'warning')
 			return
 		end
 	
 		setKickMethod(method)
-		notif('KickExploit', 'Kick method set to '..method..(method == 'Headfling' and ', dead targets only.' or '.'), 5)
+		notif('KickExploit', 'Kick method set to '..method..(method == 'Killfling' and ', dead targets only.' or '.'), 5)
 	end
 	
 	local function handleKickTeam(args)
@@ -3327,7 +3327,7 @@ run(function()
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>\n.kickskid <plr> <reason>'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/headfling>'},
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/killfling>'},
 		{Name = 'Broadcast', Tooltip = '.broadcast'},
 		{Name = 'Dance', Tooltip = '.dance\n.dundance'}
 	}
@@ -4170,7 +4170,6 @@ run(function()
 	local KickExploit
 	local Mode
 	local KickMode
-	local HeadOffset
 	local List
 	local Movement
 	local Equipment
@@ -4196,7 +4195,7 @@ run(function()
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
 	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
-	local HEAD_VELOCITY = Vector3.new(10000, 0, 0)
+	local KILL_VELOCITY = Vector3.new(10000, 0, 0)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
 	
 	local seatsDirty = false
@@ -4365,6 +4364,15 @@ run(function()
 		end
 	end
 	
+	-- a corpse ragdolls, so the torso carries the fling better than the root part.
+	-- R6 has a Torso, R15 splits it into UpperTorso/LowerTorso, and anything else
+	-- falls back to the root part and then the head
+	local function getCorpsePart(entity)
+		local character = entity.Character
+		local torso = character and (character:FindFirstChild('Torso') or character:FindFirstChild('UpperTorso'))
+		return torso or entity.RootPart or entity.Head
+	end
+	
 	local function clearPlayer(plr)
 		lastFling[plr.Name] = nil
 		for seat, target in tempList do
@@ -4404,7 +4412,6 @@ run(function()
 				local serverHop = vape.Modules.ServerHop
 	
 				KickMode.Object.Visible = Equipment.Enabled
-				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Headfling'
 	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
@@ -4538,7 +4545,7 @@ run(function()
 					end
 	
 					local owned, flung, waiting, flungHumanoid
-					local headfling = Equipment.Enabled and KickMode.Value == 'Headfling'
+					local killfling = Equipment.Enabled and KickMode.Value == 'Killfling'
 	
 					setMaxSimRadius()
 	
@@ -4549,25 +4556,23 @@ run(function()
 							local target = getTarget(seat, now)
 							if not target then continue end
 	
-							-- headfling is only useful on a corpse, hold the target until it dies
-							if headfling and target.Humanoid.Health > 0 then
+							-- killfling is only useful on a corpse, hold the target until it dies
+							if killfling and target.Humanoid.Health > 0 then
 								waiting = true
 								continue
 							end
 	
 							flung = true
 							flungHumanoid = target.Humanoid
-							local useHead = headfling or target.Humanoid.Health <= 0
-							local part = useHead and (target.Head or target.RootPart) or target.RootPart
-							local targetPos = part.Position
 	
-							if useHead then
-								flingSeat(seat, part, HEAD_VELOCITY, CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z))
+							if killfling or target.Humanoid.Health <= 0 then
+								local part = getCorpsePart(target)
+								flingSeat(seat, part, KILL_VELOCITY, CFrame.new(part.Position))
 							else
 								-- upstream zeroes the root velocity first, otherwise the target
 								-- drifts off before the seat takes over its physics
 								target.RootPart.AssemblyLinearVelocity = Vector3.zero
-								flingSeat(seat, part, NORMAL_VELOCITY, CFrame.new(targetPos) * NORMAL_OFFSET)
+								flingSeat(seat, target.RootPart, NORMAL_VELOCITY, CFrame.new(target.RootPart.Position) * NORMAL_OFFSET)
 							end
 						end
 					end
@@ -4602,24 +4607,10 @@ run(function()
 	})
 	KickMode = KickExploit:CreateDropdown({
 		Name = 'Kick Mode',
-		List = {'Normal', 'Headfling'},
-		Function = function(val)
-			HeadOffset.Object.Visible = val == 'Headfling'
-		end,
+		List = {'Normal', 'Killfling'},
 		Visible = false,
 		Darker = true,
-		Tooltip = 'Headfling waits for the target to die, then flings it by the head.'
-	})
-	HeadOffset = KickExploit:CreateSlider({
-		Name = 'Head Offset',
-		Min = 0,
-		Max = 12,
-		Default = 1,
-		Visible = false,
-		Darker = true,
-		Suffix = function(value)
-			return value == 1 and 'stud' or 'studs'
-		end
+		Tooltip = 'Killfling waits for the target to die, then flings the corpse.'
 	})
 	List = KickExploit:CreateTextList({
 		Name = 'Targets',
@@ -4637,7 +4628,6 @@ run(function()
 		Name = 'Equipment',
 		Function = function(callback)
 			KickMode.Object.Visible = callback
-			HeadOffset.Object.Visible = callback and KickMode.Value == 'Headfling'
 		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
