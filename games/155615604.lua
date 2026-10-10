@@ -4364,6 +4364,23 @@ run(function()
 		end
 	end
 	
+	-- the rep only carries one part, so the head alone would rip out of the corpse
+	-- and leave the body behind. the torso and the humanoid root part are shoved by
+	-- hand as well, once the joints snap each one is its own assembly and the whole
+	-- corpse leaves instead of a single piece. the write needs network ownership,
+	-- parts we cannot take are simply skipped
+	local function flingCorpseParts(entity, velocity)
+		local character = entity.Character
+		local torso = character and (character:FindFirstChild('Torso') or character:FindFirstChild('UpperTorso'))
+	
+		for _, part in {entity.RootPart, torso} do
+			if not part then continue end
+			pcall(function()
+				part.AssemblyLinearVelocity = velocity
+			end)
+		end
+	end
+	
 	local function clearPlayer(plr)
 		lastFling[plr.Name] = nil
 		for seat, target in tempList do
@@ -4561,6 +4578,7 @@ run(function()
 								local part = target.Head or target.RootPart
 								local targetPos = part.Position
 								flingSeat(seat, part, KILL_VELOCITY, CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12))
+								flingCorpseParts(target, KILL_VELOCITY)
 							else
 								-- upstream zeroes the root velocity first, otherwise the target
 								-- drifts off before the seat takes over its physics
