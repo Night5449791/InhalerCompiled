@@ -4169,7 +4169,6 @@ end)
 run(function()
 	local KickExploit
 	local Mode
-	local KickMode
 	local List
 	local Movement
 	local Equipment
@@ -4449,8 +4448,6 @@ run(function()
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
 	
-				KickMode.Object.Visible = Equipment.Enabled
-	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
 				end
@@ -4588,8 +4585,7 @@ run(function()
 						return
 					end
 	
-					local owned, flung, waiting, flungHumanoid
-					local killfling = equipment and KickMode.Value == 'Killfling'
+					local owned, flung, flungHumanoid
 	
 					setMaxSimRadius()
 	
@@ -4600,19 +4596,11 @@ run(function()
 							local target = getTarget(seat, now)
 							if not target then continue end
 	
-							-- killfling is only useful on a corpse, hold the target until it dies
-							if killfling and target.Humanoid.Health > 0 then
-								waiting = true
-								continue
-							end
-	
 							flung = true
 							flungHumanoid = target.Humanoid
 	
-							if killfling or target.Humanoid.Health <= 0 then
+							if target.Humanoid.Health <= 0 then
 								-- 30c46d0 behaviour, the head is the part that carries the corpse
-								-- normal ends up here too, it just takes whatever target it catches
-								-- instead of waiting around for the death first
 								local part = target.Head or target.RootPart
 								local targetPos = part.Position
 								local pushed = launched[target]
@@ -4644,7 +4632,7 @@ run(function()
 						restoreCamera()
 					end
 	
-					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
+					if not flung and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
@@ -4665,13 +4653,6 @@ run(function()
 			List.Object.Visible = value ~= 'All'
 		end
 	})
-	KickMode = KickExploit:CreateDropdown({
-		Name = 'Kick Mode',
-		List = {'Normal', 'Killfling'},
-		Visible = false,
-		Darker = true,
-		Tooltip = 'Killfling waits for the target to die, then flings the corpse.'
-	})
 	List = KickExploit:CreateTextList({
 		Name = 'Targets',
 		Placeholder = 'Roblox username',
@@ -4686,9 +4667,6 @@ run(function()
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
-		Function = function(callback)
-			KickMode.Object.Visible = callback
-		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
 	ViewTarget = KickExploit:CreateToggle({
