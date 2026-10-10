@@ -4195,7 +4195,9 @@ run(function()
 	local EQUIP_POSITION = CFrame.new(GUN_POSITION)
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
 	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
-	local KILL_VELOCITY = Vector3.new(10000, 0, 10000)
+	-- corpse fling needs lift, without the vertical component the body keeps its
+	-- ground contact and friction eats the velocity, so it only slides along the map
+	local KILL_VELOCITY = Vector3.new(10000, 10000, 10000)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
 	
 	local seatsDirty = false
@@ -4364,16 +4366,16 @@ run(function()
 		end
 	end
 	
-	-- the rep only carries one part, so the head alone would rip out of the corpse
-	-- and leave the body behind. the torso and the humanoid root part are shoved by
-	-- hand as well, once the joints snap each one is its own assembly and the whole
-	-- corpse leaves instead of a single piece. the write needs network ownership,
-	-- parts we cannot take are simply skipped
+	-- the rep is the only thing that moves the head, and when the server refuses it
+	-- the head never leaves the body. the head, the torso and the humanoid root part
+	-- are all shoved by hand as well, once the joints snap each one is its own
+	-- assembly and the whole corpse leaves instead of a single piece. the write
+	-- needs network ownership, parts we cannot take are simply skipped
 	local function flingCorpseParts(entity, velocity)
 		local character = entity.Character
 		local torso = character and (character:FindFirstChild('Torso') or character:FindFirstChild('UpperTorso'))
 	
-		for _, part in {entity.RootPart, torso} do
+		for _, part in {entity.Head, entity.RootPart, torso} do
 			if not part then continue end
 			pcall(function()
 				part.AssemblyLinearVelocity = velocity
