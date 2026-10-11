@@ -2749,8 +2749,8 @@ run(function()
 			option:SetValue(method)
 		end
 	
-		-- killfling only runs while Equipment is on, it supplies the gun that kills the target
-		if method == 'Killfling' then
+		-- headfling only runs while Equipment is on, it supplies the gun that kills the target
+		if method == 'Headfling' then
 			local equipment = kickOption('Equipment')
 			if equipment and not equipment.Enabled then
 				equipment:Toggle()
@@ -3162,9 +3162,11 @@ run(function()
 	local kickMethods = {
 		normal = 'Normal',
 		n = 'Normal',
-		killfling = 'Killfling',
-		kill = 'Killfling',
-		k = 'Killfling'
+		headfling = 'Headfling',
+		hf = 'Headfling',
+		killfling = 'Headfling',
+		kill = 'Headfling',
+		k = 'Headfling'
 	}
 	
 	local function handleKickMethod(args)
@@ -3184,12 +3186,12 @@ run(function()
 	
 		local method = kickMethods[args:lower():match('^%S+$')]
 		if not method then
-			notif('KickExploit', 'Unknown kick method. (normal/killfling)', 5, 'warning')
+			notif('KickExploit', 'Unknown kick method. (normal/headfling)', 5, 'warning')
 			return
 		end
 	
 		setKickMethod(method)
-		notif('KickExploit', 'Kick method set to '..method..(method == 'Killfling' and ', dead targets only.' or '.'), 5)
+		notif('KickExploit', 'Kick method set to '..method..(method == 'Headfling' and ', dead targets only.' or '.'), 5)
 	end
 	
 	local function handleKickTeam(args)
@@ -3327,7 +3329,7 @@ run(function()
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>\n.kickskid <plr> <reason>'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/killfling>'},
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/headfling>'},
 		{Name = 'Broadcast', Tooltip = '.broadcast'},
 		{Name = 'Dance', Tooltip = '.dance\n.dundance'}
 	}
@@ -4251,6 +4253,7 @@ end)
 run(function()
 	local KickExploit
 	local Mode
+	local KickMode
 	local List
 	local Movement
 	local Equipment
@@ -4573,6 +4576,7 @@ run(function()
 					local now = os.clock()
 					-- snapshot the toggles for the frame, they can't change mid-tick anyway
 					local mode = Mode.Value
+					local kickMode = KickMode.Value
 					local equipment = Equipment.Enabled
 					local movement = Movement.Enabled
 					local autoRejoin = AutoRejoin.Enabled
@@ -4661,7 +4665,7 @@ run(function()
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
-					if (mode == 'Individual' or mode == 'Headfling') and not next(List.ListEnabled) and not next(leftCache) then
+					if mode == 'Individual' and not next(List.ListEnabled) and not next(leftCache) then
 						notif('KickExploit', 'No targets left, disabling.', 5)
 						KickExploit:Toggle()
 						return
@@ -4681,7 +4685,7 @@ run(function()
 							flung = true
 							flungHumanoid = target.Humanoid
 	
-							if mode == 'Headfling' then
+							if kickMode == 'Headfling' then
 								if target.Humanoid.Health > 0 then
 									-- wait for the target to die; keep the gun equipped so it can be
 									-- killed (the chatcommand forces Equipment on for headfling)
@@ -4762,7 +4766,20 @@ run(function()
 	})
 	Mode = KickExploit:CreateDropdown({
 		Name = 'Mode',
-		List = {'All', 'Individual', 'Headfling'},
+		List = {'All', 'Individual'},
+		Function = function(value)
+			List.Object.Visible = value ~= 'All'
+		end
+	})
+	KickMode = KickExploit:CreateDropdown({
+		Name = 'Kick Mode',
+		List = {'Normal', 'Headfling'},
+		Default = 'Normal',
+		Tooltip = 'Fling technique: Normal flings anyone, Headfling waits for the target to die then flings the corpse (torso / rootpart / hrp).'
+	})
+	KickMode = KickExploit:CreateDropdown({
+		Name = 'KickMode',
+		List = {'Normal','Headfling'},
 		Function = function(value)
 			List.Object.Visible = value ~= 'All'
 		end
