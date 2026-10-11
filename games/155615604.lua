@@ -4450,18 +4450,6 @@ run(function()
 		return success and owned
 	end
 	
-	local function flingSeat(seat, part, velocity, cframe)
-		seat.AssemblyLinearVelocity = velocity
-		seat.CFrame = cframe
-		sethiddenproperty(seat, 'PhysicsRepRootPart', part)
-		sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
-	
-		local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
-		if wheels then
-			wheels:Destroy()
-		end
-	end
-	
 	local function clearPlayer(plr)
 		lastFling[plr.Name] = nil
 		for seat, target in tempList do
@@ -4645,10 +4633,18 @@ run(function()
 							flung = true
 							flungHumanoid = target.Humanoid
 	
-							-- the root velocity is zeroed first, otherwise the target
-							-- drifts off before the seat takes over its physics
+							-- flings the target's body part: seat velocity + cframe go first,
+							-- then the root part is handed over as the seat's physics rep
+							seat.AssemblyLinearVelocity = NORMAL_VELOCITY
+							seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
 							target.RootPart.AssemblyLinearVelocity = Vector3.zero
-							flingSeat(seat, target.RootPart, NORMAL_VELOCITY, CFrame.new(target.RootPart.Position) * NORMAL_OFFSET)
+							sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
+							sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
+	
+							local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
+							if wheels then
+								wheels:Destroy()
+							end
 						end
 					end
 	
