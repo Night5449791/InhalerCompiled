@@ -4661,7 +4661,7 @@ run(function()
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
-					if mode == 'Individual' and not next(List.ListEnabled) and not next(leftCache) then
+					if (mode == 'Individual' or mode == 'Headfling') and not next(List.ListEnabled) and not next(leftCache) then
 						notif('KickExploit', 'No targets left, disabling.', 5)
 						KickExploit:Toggle()
 						return
@@ -4681,7 +4681,39 @@ run(function()
 							flung = true
 							flungHumanoid = target.Humanoid
 	
-							if target.Humanoid.Health <= 0 then
+							if mode == 'Headfling' then
+								if target.Humanoid.Health > 0 then
+									-- wait for the target to die; keep the gun equipped so it can be
+									-- killed (the chatcommand forces Equipment on for headfling)
+									if equipment then
+										backpack = backpack or lplr:FindFirstChildWhichIsA('Backpack')
+										local btool = backpack and backpack:FindFirstChildWhichIsA('Tool') or nil
+										local ltool = lplr.Character:FindFirstChildWhichIsA('Tool')
+										if not (btool or ltool) then
+											root.CFrame = EQUIP_POSITION
+										elseif btool and not ltool then
+											entitylib.character.Humanoid:EquipTool(btool)
+										end
+									end
+								else
+									-- corpse: fling the root (hrp), which drags the whole ragdoll
+									-- (torso / head included through the joints) straight out
+									local part = target.RootPart or target.Head
+									local targetPos = part.Position
+									local pushed = launched[target]
+	
+									if pushed and (now - pushed) > CORPSE_WINDOW then
+										-- tethering the corpse past the launch window only makes it
+										-- follow the car around, let go so the velocity carries it out
+										tempList[seat] = nil
+									else
+										-- ownership is dropped the moment the player dies, nobody is
+										-- left to fight over the corpse so the fling goes straight out
+										launched[target] = pushed or now
+										flingSeat(seat, part, KILL_VELOCITY, CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12))
+									end
+								end
+							elseif target.Humanoid.Health <= 0 then
 								-- 30c46d0 behaviour, the head is the part that carries the corpse
 								local part = target.Head or target.RootPart
 								local targetPos = part.Position
@@ -4730,7 +4762,7 @@ run(function()
 	})
 	Mode = KickExploit:CreateDropdown({
 		Name = 'Mode',
-		List = {'All', 'Individual'},
+		List = {'All', 'Individual', 'Headfling'},
 		Function = function(value)
 			List.Object.Visible = value ~= 'All'
 		end
@@ -4812,6 +4844,45 @@ run(function()
 	end
 	
 	vape:Clean(playersService.PlayerAdded:Connect(rejoinPlayer))
+end)
+
+run(function()
+	local UniversalBroadcast
+	local Message
+	local rand = Random.new()
+	
+	UniversalBroadcast = vape.Categories.Utility:CreateModule({
+		Name = 'UniversalBroadcast',
+		Function = function(callback)
+			if callback then
+				local useSignal = true
+	
+				repeat
+					if entitylib.isAlive then
+						local animator = entitylib.character.Humanoid:FindFirstChildWhichIsA('Animator')
+	
+						if animator then
+							if replicatesignal and useSignal then
+								useSignal = pcall(replicatesignal, animator.OnCombinedUpdate, ('http=507770677'..utf8.char(rand:NextInteger(1, 65535))..Message.Value):sub(1, 256), true, 0, 0.0001, 0, 0, Enum.AnimationPriority.Core, true, 255)
+							else
+								local anim = Instance.new('Animation')
+								anim.AnimationId = ('http=507770677'..utf8.char(rand:NextInteger(1, 65535))..Message.Value):sub(1, 256)
+								local track = animator:LoadAnimation(anim)
+								track:Play(0, 0.0001, 0)
+							end
+						end
+					end
+	
+					task.wait()
+				until not UniversalBroadcast.Enabled
+			end
+		end,
+		Tooltip = 'Use animations to spam the console of people ingame'
+	})
+	Message = UniversalBroadcast:CreateTextBox({
+		Name = 'Message',
+		Placeholder = 'text (242 character limit)'
+	})
 end)
 
 run(function()
