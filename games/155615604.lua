@@ -4276,6 +4276,7 @@ run(function()
 	local PlayerLimit
 	local TimeLimit
 	local HopList
+	local HeadOffset
 	local Killfling
 	local ViewTarget
 	local seats = {}
@@ -4285,6 +4286,7 @@ run(function()
 	local candidateTime = 0
 	local didClick = {}
 	local lastFling = {}
+	local flingRot = {} -- per-target part rotation for Killfling (Head/HRP/Torso)
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
@@ -4296,7 +4298,7 @@ run(function()
 	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
 	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
-	local KILL_VELOCITY = Vector3.new(10000, 0, 10000)
+	local HEAD_VELOCITY = Vector3.new(10000, 0, 0)
 	
 	local seatsDirty = false
 	
@@ -4617,7 +4619,8 @@ run(function()
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
-					local owned, flung, flungHumanoid
+					local owned, flung, waiting, flungHumanoid
+					local killfling = Killfling.Enabled and Equipment.Enabled
 	
 					setMaxSimRadius()
 	
@@ -4628,17 +4631,32 @@ run(function()
 							local target = getTarget(seat, now)
 							if not target then continue end
 	
+							-- killfling is only useful on a corpse, hold the target until it dies
+							if killfling and target.Humanoid.Health > 0 then
+								waiting = true
+								continue
+							end
+	
 							flung = true
 							flungHumanoid = target.Humanoid
 	
-							if Killfling.Enabled then
-								-- 30c46d0 killfling: the head is the part that carries the corpse
-								local part = target.Head or target.RootPart
-								local targetPos = part.Position
-								seat.AssemblyLinearVelocity = KILL_VELOCITY
-								seat.CFrame = CFrame.new(targetPos.X - 2, targetPos.Y, targetPos.Z - 12)
-								sethiddenproperty(seat, 'PhysicsRepRootPart', part)
-								sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
+							if killfling then
+								-- 9e579e1 killfling: rotate the flung part across the head,
+								-- root and torso every heartbeat
+								local character = target.Character
+								local torso = character and character:FindFirstChild('Torso') or nil
+								local parts = {target.Head, target.RootPart, torso}
+								local idx = ((flingRot[target.Player.Name] or 0) % #parts) + 1
+								flingRot[target.Player.Name] = idx
+								local part = parts[idx]
+	
+								if part then
+									local targetPos = part.Position
+									seat.AssemblyLinearVelocity = HEAD_VELOCITY
+									seat.CFrame = CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z)
+									sethiddenproperty(seat, 'PhysicsRepRootPart', part)
+									sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
+								end
 							else
 								-- flings the target's body part: seat velocity + cframe go first,
 								-- then the root part is handed over as the seat's physics rep
@@ -4664,13 +4682,14 @@ run(function()
 						restoreCamera()
 					end
 	
-					if not flung and next(seats) and (now - targetTimer) > 5 then
+					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
 				end))
 			else
 				table.clear(tempList)
+				table.clear(flingRot)
 				table.clear(teamButtons)
 				restoreCamera()
 			end
@@ -4702,7 +4721,25 @@ run(function()
 	})
 	Killfling = KickExploit:CreateToggle({
 		Name = 'Killfling',
-		Tooltip = 'Flings the targets head to kill seated players, separate from the normal fling.'
+		Function = function(callback)
+			HeadOffset.Object.Visible = callback
+			-- killfling needs a gun to kill the target before flinging it
+			if callback and not Equipment.Enabled then
+				Equipment:Toggle()
+			end
+		end,
+		Tooltip = 'Holds the target until it dies, then flings the corpse across the head, root and torso.'
+	})
+	HeadOffset = KickExploit:CreateSlider({
+		Name = 'Head Offset',
+		Min = 0,
+		Max = 12,
+		Default = 1,
+		Visible = false,
+		Darker = true,
+		Suffix = function(value)
+			return value == 1 and 'stud' or 'studs'
+		end
 	})
 	ViewTarget = KickExploit:CreateToggle({
 		Name = 'ViewTarget',
