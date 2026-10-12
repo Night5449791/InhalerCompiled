@@ -2583,7 +2583,7 @@ run(function()
 				if not AutoOnDied.Enabled then return end
 	
 				openTeamMenu()
-				task.wait(1)
+				task.wait(1.25)
 				joinFirstTeam()
 			end
 	
