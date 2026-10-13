@@ -2574,11 +2574,6 @@ run(function()
 		end
 	})
 	BASE_OFFSET = KNHeight.Value
-	
-	BASE_OFFSET = KillNotifications:CreateSlider({
-		Name = 'Y axis Offset',
-		Tooltip = 'How far down the screen the killfeed is.'
-	})
 end)
 
 run(function()
