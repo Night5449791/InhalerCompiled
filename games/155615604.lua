@@ -3193,26 +3193,6 @@ run(function()
 		end
 	end
 	
-	local function handleBroadcast()
-		if not options.Broadcast.Enabled then return end
-	
-		local module = vape.Modules.UniversalBroadcast
-		if not module then
-			notif('ChatCommand', 'UniversalBroadcast is not available in this game.', 5, 'warning')
-			return
-		end
-	
-		module:Toggle()
-		local message = 'Automatically broadcasting in console. Press F9 or chat /console to see result'
-		task.delay(0.1, function()
-			if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-				textChatService.ChatInputBarConfiguration.TargetTextChannel:SendAsync(message)
-			else
-				replicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, 'All')
-			end
-		end)
-	end
-	
 	local function handleUndance()
 		if danceTrack then
 			danceTrack:Stop()
@@ -3545,7 +3525,6 @@ run(function()
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>\n.kickskid <plr> <reason>'},
 		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/headfling>'},
-		{Name = 'Broadcast', Tooltip = '.broadcast'},
 		{Name = 'Dance', Tooltip = '.dance\n.undance'}
 	}
 	
@@ -3581,7 +3560,6 @@ run(function()
 		hop = handleHop,
 		rj = handleRejoin,
 		reload = handleReload,
-		broadcast = handleBroadcast,
 		dance = handleDance,
 		undance = handleUndance
 	}
@@ -4632,6 +4610,7 @@ run(function()
 	local function setMaxSimRadius()
 		local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
 		local setsim = (getgenv and getgenv().setsimulationradius) or _G.setsimulationradius or setsimulationradius
+		local setflag = (getgenv and getgenv().setfflag) or _G.setfflag or setfflag
 	
 		if typeof(sethidden) == 'function' then
 			pcall(sethidden, lplr, 'SimulationRadius', 1e9)
@@ -4640,6 +4619,12 @@ run(function()
 	
 		if typeof(setsim) == 'function' then
 			pcall(setsim, 1e9)
+		end
+	
+		if typeof(setflag) == 'function' then
+			pcall(setflag, 'MinClientSimulationRadius', '1e9')
+			pcall(setflag, 'MaxClientSimulationRadius', '1e9')
+			pcall(setflag, 'MinimalSimRadiusBuffer', '1e9')
 		end
 	end
 	
