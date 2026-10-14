@@ -308,6 +308,8 @@ run(function()
 		if entity.NPC then return true end
 		if isFriend(entity.Player) then return false end
 		if not select(2, whitelist:get(entity.Player)) then return false end
+		-- the team restriction holds even with skip, so a guard still cannot hit their
+		-- own team; skip only reaches the innocent inmate protection below
 		if vape.Settings.Modules.Options['Teams by server'].Enabled and (not skip or lplr.Team == teams.Guards) then
 			return lplr.Team ~= entity.Player.Team and entity.Player.Team ~= teams.Neutral
 		end
@@ -315,7 +317,9 @@ run(function()
 	end
 
 	entitylib.isVulnerable = function(entity, attackCheck, skipCheck)
-		if attackCheck and lplr.Team == teams.Guards and entity.Player.Team == teams.Inmates and not entity.Character:GetAttribute('Hostile') then
+		-- a guard shooting an innocent inmate is the one case blocked here, and it is the
+		-- only thing skipCheck (Killaura's Team Attack) is allowed to drop
+		if attackCheck and not skipCheck and lplr.Team == teams.Guards and entity.Player.Team == teams.Inmates and not entity.Character:GetAttribute('Hostile') then
 			return false
 		end
 
@@ -1869,7 +1873,10 @@ run(function()
 							NPCs = Targets.NPCs.Enabled,
 							Limit = Max.Value,
 							AttackCheck = true,
-							SkipTeam = TeamAttack.Enabled and nil or true
+							-- only guards get anything out of this: the base keeps the team
+							-- restriction either way and just clears the innocent inmate
+							-- protection in isVulnerable, which applies to guards alone
+							SkipTeam = TeamAttack.Enabled and lplr.Team == teams.Guards
 						})
 	
 						if #entities > 0 then
@@ -1927,6 +1934,11 @@ run(function()
 	Targets = Killaura:CreateTargets({
 		Players = true
 	})
+	TeamAttack = Killaura:CreateToggle({
+		Name = 'Team Attack',
+		Default = false,
+		Tooltip = 'Lets guards hit innocent inmates'
+	})
 	AttackRange = Killaura:CreateSlider({
 		Name = 'Attack range',
 		Min = 1,
@@ -1949,11 +1961,6 @@ run(function()
 		Default = 10
 	})
 	Mouse = Killaura:CreateToggle({Name = 'Require mouse down'})
-	TeamAttack = Killaura:CreateToggle({
-		Name = 'Team attack',
-		Default = false,
-		Tooltip = 'Lets guards attack players on the same team too'
-	})
 	Killaura:CreateToggle({
 		Name = 'Show target',
 		Function = function(callback)
@@ -2134,11 +2141,15 @@ end)
 run(function()
 	local ToolGrip
 	local DefaultGrip = Vector3.new(1, 2, 0)
+	local LongerGrip = Vector3.new(1, 2, 1.5)
 	local ToolGrips = {
-		['Remington 870'] = Vector3.new(1, 2, 1.5),
-		['AK-47'] = Vector3.new(1, 2, 1.5),
+		['Remington 870'] = LongerGrip,
+		['AK-47'] = LongerGrip,
+		M4A1 = LongerGrip,
+		FAL = LongerGrip,
 		['MP5'] = DefaultGrip,
-		['M9'] = DefaultGrip
+		['M9'] = DefaultGrip,
+		Taser = DefaultGrip
 	}
 	local originalGrips = setmetatable({}, {
 		__mode = 'k'
