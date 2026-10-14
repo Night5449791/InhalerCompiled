@@ -4283,8 +4283,15 @@ run(function()
 		-- splitCheaterText always hands a name back once text is not empty
 		local plr, rest, name = splitCheaterText(text)
 	
-		-- read the old reason before the entry is dropped, the log still needs it
-		local previous = remove and (plr and getCheaterReason(plr) or Cheaters.Names[name:lower()]) or nil
+		-- the reason the target already carries, read before anything is overwritten; it is
+		-- also what a removal logs as the previous reason
+		local existing = (plr and getCheaterReason(plr)) or Cheaters.Names[name:lower()]
+	
+		-- adding someone who is already on the list would only rewrite their reason, so it
+		-- is skipped with a notice and the entry is left untouched
+		if not remove and existing then
+			return notify((plr and plr.DisplayName or name)..' is already on the cheater list ('..existing..'), not added again.', 10, 'warning')
+		end
 	
 		-- a removal has no reason, that is what untags the player
 		if remove then
@@ -4309,7 +4316,7 @@ run(function()
 		end
 	
 		saveCheaters()
-		sendWebhookLog(plr, name, reason, remove, previous)
+		sendWebhookLog(plr, name, reason, remove, existing)
 		notify((plr and plr.DisplayName or name)..(remove and ' removed from the cheater list.' or ' added to the cheater list. ('..reason..')'), 10)
 	end
 	
