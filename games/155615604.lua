@@ -4445,69 +4445,6 @@ run(function()
 end)
 
 run(function()
-	local GetHash
-	local Hash
-	
-	-- whitelist.hashes is the same cache whitelist:get reads from, so this is exactly
-	-- the hash the whitelist gets checked against
-	local function getHash()
-		return whitelist.hashes[lplr.Name..lplr.UserId]
-	end
-	
-	GetHash = vape.Categories.World:CreateModule({
-		Name = 'GetHash',
-		Function = function(callback)
-			if callback then
-				GetHash:Toggle()
-	
-				local value = getHash()
-				if value == '' then
-					notif('GetHash', 'Hash library is not loaded.', 5, 'warning')
-					return
-				end
-	
-				Hash:SetValue(value)
-	
-				if not setclipboard then
-					notif('GetHash', 'Your executor does not support clipboard.', 5, 'warning')
-					return
-				end
-	
-				setclipboard(value)
-				notif('GetHash', 'Copied your whitelist hash.', 5)
-			end
-		end,
-		Tooltip = 'generate hash for whitelist'
-	})
-	Hash = GetHash:CreateTextBox({
-		Name = 'Hash',
-		Placeholder = 'Enable to generate',
-		Darker = true,
-		Tooltip = 'sha512 of your name, user id and SelfReport'
-	})
-	GetHash:CreateButton({
-		Name = 'Copy Hash',
-		Function = function()
-			if not setclipboard then
-				notif('GetHash', 'Your executor does not support clipboard.', 5, 'warning')
-				return
-			end
-	
-			local value = Hash.Value ~= '' and Hash.Value or getHash()
-			if value == '' then
-				notif('GetHash', 'Hash library is not loaded.', 5, 'warning')
-				return
-			end
-	
-			setclipboard(value)
-			notif('GetHash', 'Copied your whitelist hash.', 5)
-		end,
-		Tooltip = 'Copies your whitelist hash to the clipboard'
-	})
-	
-end)
-
-run(function()
 	local JoinJobid
 	local Place
 	local JobId
@@ -4581,8 +4518,8 @@ run(function()
 	local PlayerLimit
 	local TimeLimit
 	local HopList
+	local KickMode
 	local HeadOffset
-	local Killfling
 	local ViewTarget
 	local seats = {}
 	local spawners = {}
@@ -4799,6 +4736,9 @@ run(function()
 				local antiFling = vape.Modules.AntiFling
 				local serverHop = vape.Modules.ServerHop
 	
+				KickMode.Object.Visible = Equipment.Enabled
+				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value ~= 'Normal'
+	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
 				end
@@ -4835,8 +4775,13 @@ run(function()
 				end))
 				KickExploit:Clean(entitylib.Events.EntityRemoved:Connect(clearEntity))
 				KickExploit:Clean(restoreCamera)
-				-- the engine resets the radius every physics step, max it again right after
-				KickExploit:Clean(runService.PostSimulation:Connect(setMaxSimRadius))
+				-- the engine resets the radius every physics step, max it again right after,
+				-- but only for the normal path: the part flings stay out of that override
+				KickExploit:Clean(runService.PostSimulation:Connect(function()
+					if not (Equipment.Enabled and KickMode.Value ~= 'Normal') then
+						setMaxSimRadius()
+					end
+				end))
 	
 				KickExploit:Clean(runService.Heartbeat:Connect(function(dt)
 					local now = os.clock()
@@ -4932,19 +4877,29 @@ run(function()
 					end
 	
 					local owned, flung, waiting, flungHumanoid
-					local killfling = Killfling.Enabled and Equipment.Enabled
+					local flingMode = KickMode.Value
+					local headfling = Equipment.Enabled and flingMode == 'Headfling'
+					local killfling = Equipment.Enabled and flingMode == 'Killfling'
+					local partFling = headfling or killfling
 	
-					setMaxSimRadius()
+					-- both part flings stay out of the simulation radius override: they ask the
+					-- executor what the client owns right now and only work with that
+					if not partFling then
+						setMaxSimRadius()
+					end
 	
 					for _, seat in seats do
-						if isNetworkOwned(seat) then
-							owned = true
+						if partFling and not isnetworkowner(seat) then continue end
+						if not partFling and not isNetworkOwned(seat) then continue end
 	
-							local target = getTarget(seat, now)
-							if not target then continue end
+						owned = true
 	
-							-- killfling is only useful on a corpse, hold the target until it dies
-							if killfling and target.Humanoid.Health > 0 then
+						local target = getTarget(seat, now)
+						if not target then continue end
+	
+						if partFling then
+							-- only useful on a corpse, hold the seat until the target dies
+							if target.Humanoid.Health > 0 then
 								waiting = true
 								continue
 							end
@@ -4952,37 +4907,43 @@ run(function()
 							flung = true
 							flungHumanoid = target.Humanoid
 	
-							if killfling then
-								-- 9e579e1 killfling: rotate the flung part across the head,
-								-- root and torso every heartbeat
+							-- headfling hands the head over, killfling rotates the flung part
+							-- across head, root and torso every frame
+							local part
+							if headfling then
+								part = target.Head
+							else
 								local character = target.Character
-								local torso = character and character:FindFirstChild('Torso') or nil
+								local torso = character and (character:FindFirstChild('Torso') or character:FindFirstChild('UpperTorso')) or nil
 								local parts = {target.Head, target.RootPart, torso}
 								local idx = ((flingRot[target.Player.Name] or 0) % #parts) + 1
 								flingRot[target.Player.Name] = idx
-								local part = parts[idx]
-	
-								if part then
-									local targetPos = part.Position
-									seat.AssemblyLinearVelocity = HEAD_VELOCITY
-									seat.CFrame = CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z)
-									sethiddenproperty(seat, 'PhysicsRepRootPart', part)
-									sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
-								end
-							else
-								-- flings the target's body part: seat velocity + cframe go first,
-								-- then the root part is handed over as the seat's physics rep
-								seat.AssemblyLinearVelocity = NORMAL_VELOCITY
-								seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
-								target.RootPart.AssemblyLinearVelocity = Vector3.zero
-								sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
-								sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
+								part = parts[idx]
 							end
 	
-							local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
-							if wheels then
-								wheels:Destroy()
+							if part then
+								local targetPos = part.Position
+								seat.AssemblyLinearVelocity = HEAD_VELOCITY
+								seat.CFrame = CFrame.new(targetPos.X - HeadOffset.Value, targetPos.Y, targetPos.Z)
+								sethiddenproperty(seat, 'PhysicsRepRootPart', part)
+								sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(part))
 							end
+						else
+							flung = true
+							flungHumanoid = target.Humanoid
+	
+							-- flings the target's body part: seat velocity + cframe go first,
+							-- then the root part is handed over as the seat's physics rep
+							seat.AssemblyLinearVelocity = NORMAL_VELOCITY
+							seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
+							target.RootPart.AssemblyLinearVelocity = Vector3.zero
+							sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
+							sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
+						end
+	
+						local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
+						if wheels then
+							wheels:Destroy()
 						end
 					end
 	
@@ -5029,18 +4990,22 @@ run(function()
 	})
 	Equipment = KickExploit:CreateToggle({
 		Name = 'Equipment',
+		Function = function(callback)
+			KickMode.Object.Visible = callback
+			HeadOffset.Object.Visible = callback and KickMode.Value ~= 'Normal'
+		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
-	Killfling = KickExploit:CreateToggle({
-		Name = 'Killfling',
-		Function = function(callback)
-			HeadOffset.Object.Visible = callback
-			-- killfling needs a gun to kill the target before flinging it
-			if callback and not Equipment.Enabled then
-				Equipment:Toggle()
-			end
+	KickMode = KickExploit:CreateDropdown({
+		Name = 'Kick Mode',
+		List = {'Normal', 'Headfling', 'Killfling'},
+		Function = function(value)
+			-- the offset drives both part flings, which is why Equipment gates it too
+			HeadOffset.Object.Visible = Equipment.Enabled and value ~= 'Normal'
 		end,
-		Tooltip = 'Holds the target until it dies, then flings the corpse across the head, root and torso.'
+		Visible = false,
+		Darker = true,
+		Tooltip = 'Headfling flings the head only, Killfling flings the head, root and torso; both hold the target until it dies.'
 	})
 	HeadOffset = KickExploit:CreateSlider({
 		Name = 'Head Offset',
