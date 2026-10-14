@@ -2048,9 +2048,11 @@ end)
 run(function()
 	local ToolGrip
 	local DefaultGrip = Vector3.new(1, 2, 0)
-	local SpecialGrips = {
+	local ToolGrips = {
 		['Remington 870'] = Vector3.new(1, 2, 1.5),
-		['AK-47'] = Vector3.new(1, 2, 1.5)
+		['AK-47'] = Vector3.new(1, 2, 1.5),
+		['MP5'] = DefaultGrip,
+		['M9'] = DefaultGrip
 	}
 	local originalGrips = setmetatable({}, {
 		__mode = 'k'
@@ -2059,8 +2061,8 @@ run(function()
 	local function ApplyGrip(tool)
 		if not tool:IsA('Tool') then return end
 	
-		local grip = SpecialGrips[tool.Name] or DefaultGrip
-		if tool.GripPos == grip then return end
+		local grip = ToolGrips[tool.Name]
+		if not grip or tool.GripPos == grip then return end
 	
 		if originalGrips[tool] == nil then
 			originalGrips[tool] = tool.GripPos
