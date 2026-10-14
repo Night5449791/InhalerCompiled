@@ -3047,6 +3047,20 @@ run(function()
 	local kickTeams = {}
 	local kickTeamMembers = {}
 	
+	-- ============================================================================
+	-- functions
+	-- helpers first, then one handler per command family; the commands that call them
+	-- are listed under the commands banner at the bottom
+	-- ============================================================================
+	
+	-- where .tp lands the local character (the flat mask itself comes from base.lua)
+	local TP_OFFSET = Vector3.new(0, 2, 0)
+	-- animation ids per rig, so .dance stops rebuilding two lists every time
+	local DANCE_IDS = {
+		R6 = {'27789359', '30196114', '248263260', '45834924', '33796059', '28488254', '52155728'},
+		R15 = {'3333432454', '4555808220', '4049037604', '4555782893', '10214311282', '10714010337', '10713981723', '10714372526', '10714076981', '10714392151', '11444443576'}
+	}
+	
 	-- nil when the text is missing or only whitespace
 	local function argument(text)
 		text = text and text:match('^%s*(.-)%s*$') or nil
@@ -3111,8 +3125,9 @@ run(function()
 			option:SetValue(method)
 		end
 	
-		-- headfling only runs while Equipment is on, it supplies the gun that kills the target
-		if method == 'Headfling' then
+		-- both part flings only run while Equipment is on, it supplies the gun that
+		-- kills the target before the corpse gets flung
+		if method ~= 'Normal' then
 			local equipment = kickOption('Equipment')
 			if equipment and not equipment.Enabled then
 				equipment:Toggle()
@@ -3240,7 +3255,7 @@ run(function()
 			local targetRoot = target and target.RootPart
 			local root = entitylib.character and entitylib.character.RootPart
 			if targetRoot and root then
-				local direction = (targetRoot.Position - root.Position) * Vector3.new(1, 0, 1)
+				local direction = (targetRoot.Position - root.Position) * flatMask
 				if direction.Magnitude > 1 then
 					vec = direction.Unit
 				end
@@ -3358,11 +3373,8 @@ run(function()
 		end
 	
 		handleUndance()
-		local dances = {'27789359', '30196114', '248263260', '45834924', '33796059', '28488254', '52155728'}
-		if humanoid.RigType == Enum.HumanoidRigType.R15 then
-			dances = {'3333432454', '4555808220', '4049037604', '4555782893', '10214311282', '10714010337', '10713981723', '10714372526', '10714076981', '10714392151', '11444443576'}
-		end
 	
+		local dances = humanoid.RigType == Enum.HumanoidRigType.R15 and DANCE_IDS.R15 or DANCE_IDS.R6
 		local animation = Instance.new('Animation')
 		animation.AnimationId = 'rbxassetid://'..dances[math.random(1, #dances)]
 		danceTrack = humanoid:LoadAnimation(animation)
@@ -3501,14 +3513,13 @@ run(function()
 		startKick('Individual', 'Flinging '..player.Name..'.')
 	end
 	
+	-- short names for the Kick Mode values the command accepts: normal or killfling
 	local kickMethods = {
 		normal = 'Normal',
 		n = 'Normal',
-		headfling = 'Headfling',
-		hf = 'Headfling',
-		killfling = 'Headfling',
-		kill = 'Headfling',
-		k = 'Headfling'
+		killfling = 'Killfling',
+		kill = 'Killfling',
+		k = 'Killfling'
 	}
 	
 	local function handleKickMethod(args)
@@ -3528,12 +3539,13 @@ run(function()
 	
 		local method = kickMethods[args:lower():match('^%S+$')]
 		if not method then
-			notif('KickExploit', 'Unknown kick method. (normal/headfling)', 5, 'warning')
+			notif('KickExploit', 'Unknown kick method. (normal/killfling)', 5, 'warning')
 			return
 		end
 	
 		setKickMethod(method)
-		notif('KickExploit', 'Kick method set to '..method..(method == 'Headfling' and ', dead targets only.' or '.'), 5)
+		-- both part flings only work on a corpse, which is what the note says
+		notif('KickExploit', 'Kick method set to '..method..(method == 'Normal' and '.' or ', dead targets only.'), 5)
 	end
 	
 	local function handleKickTeam(args)
@@ -3619,7 +3631,7 @@ run(function()
 			return
 		end
 	
-		localRoot.CFrame = target.RootPart.CFrame + Vector3.new(0, 2, 0)
+		localRoot.CFrame = target.RootPart.CFrame + TP_OFFSET
 	end
 	
 	local function handleFollow(args)
@@ -3656,6 +3668,12 @@ run(function()
 		gameCamera.CameraSubject = entity.Humanoid
 	end
 	
+	-- ============================================================================
+	-- commands
+	-- one toggle per command family, then the dispatch table; the short names are the
+	-- real handlers and the long names are aliased onto them right after
+	-- ============================================================================
+	
 	local toggles = {
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
 		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
@@ -3671,7 +3689,7 @@ run(function()
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>\n.kickskid <plr> <reason>'},
-		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/headfling>'},
+		{Name = 'Kick', Tooltip = '.kick <plr>\n.kick all\n.kick none\n.kickteam <c/i/g, criminals/inmates/guards>\n.kickmethod <normal/killfling>'},
 		{Name = 'Dance', Tooltip = '.dance\n.undance'}
 	}
 	
@@ -3740,6 +3758,7 @@ run(function()
 		return false
 	end
 	
+	-- module registration: the toggles above are the options the handlers check
 	ChatCommand = vape.Categories.Utility:CreateModule({
 		Name = 'ChatCommand',
 		Function = function(callback)
@@ -4815,7 +4834,7 @@ run(function()
 				local serverHop = vape.Modules.ServerHop
 	
 				KickMode.Object.Visible = Equipment.Enabled
-				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value ~= 'Normal'
+				HeadOffset.Object.Visible = Equipment.Enabled and KickMode.Value == 'Killfling'
 	
 				if not antiFling.Enabled then
 					antiFling:Toggle()
@@ -4955,13 +4974,10 @@ run(function()
 					end
 	
 					local owned, flung, waiting, flungHumanoid
-					local flingMode = KickMode.Value
-					local headfling = Equipment.Enabled and flingMode == 'Headfling'
-					local killfling = Equipment.Enabled and flingMode == 'Killfling'
-					local partFling = headfling or killfling
+					-- killfling is the only part fling: it stays out of the simulation radius
+					-- override, asking the executor what the client owns right now instead
+					local partFling = Equipment.Enabled and KickMode.Value == 'Killfling'
 	
-					-- both part flings stay out of the simulation radius override: they ask the
-					-- executor what the client owns right now and only work with that
 					if not partFling then
 						setMaxSimRadius()
 					end
@@ -4985,19 +5001,13 @@ run(function()
 							flung = true
 							flungHumanoid = target.Humanoid
 	
-							-- headfling hands the head over, killfling rotates the flung part
-							-- across head, root and torso every frame
-							local part
-							if headfling then
-								part = target.Head
-							else
-								local character = target.Character
-								local torso = character and (character:FindFirstChild('Torso') or character:FindFirstChild('UpperTorso')) or nil
-								local parts = {target.Head, target.RootPart, torso}
-								local idx = ((flingRot[target.Player.Name] or 0) % #parts) + 1
-								flingRot[target.Player.Name] = idx
-								part = parts[idx]
-							end
+							-- rotates the flung part across head, root and torso every frame
+							local character = target.Character
+							local torso = character and (character:FindFirstChild('Torso') or character:FindFirstChild('UpperTorso')) or nil
+							local parts = {target.Head, target.RootPart, torso}
+							local idx = ((flingRot[target.Player.Name] or 0) % #parts) + 1
+							flingRot[target.Player.Name] = idx
+							local part = parts[idx]
 	
 							if part then
 								local targetPos = part.Position
@@ -5070,20 +5080,20 @@ run(function()
 		Name = 'Equipment',
 		Function = function(callback)
 			KickMode.Object.Visible = callback
-			HeadOffset.Object.Visible = callback and KickMode.Value ~= 'Normal'
+			HeadOffset.Object.Visible = callback and KickMode.Value == 'Killfling'
 		end,
 		Tooltip = 'Grab a gun before kicking to kill seated players.'
 	})
 	KickMode = KickExploit:CreateDropdown({
 		Name = 'Kick Mode',
-		List = {'Normal', 'Headfling', 'Killfling'},
+		List = {'Normal', 'Killfling'},
 		Function = function(value)
-			-- the offset drives both part flings, which is why Equipment gates it too
-			HeadOffset.Object.Visible = Equipment.Enabled and value ~= 'Normal'
+			-- the offset only drives killfling, which is why Equipment gates it too
+			HeadOffset.Object.Visible = Equipment.Enabled and value == 'Killfling'
 		end,
 		Visible = false,
 		Darker = true,
-		Tooltip = 'Headfling flings the head only, Killfling flings the head, root and torso; both hold the target until it dies.'
+		Tooltip = 'Killfling flings the head, root and torso, holding the target until it dies.'
 	})
 	HeadOffset = KickExploit:CreateSlider({
 		Name = 'Head Offset',
