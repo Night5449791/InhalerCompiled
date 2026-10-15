@@ -4800,6 +4800,17 @@ run(function()
 		return success and owned
 	end
 	
+	-- a target that is no longer in the server is disabled in the list and remembered, so
+	-- rejoinPlayer can enable it again when they come back; the name itself stays in List
+	local function cacheLeftTarget(plr)
+		if not plr or leftCache[plr.Name] then return end
+		if not table.find(List.ListEnabled, plr.Name) then return end
+	
+		List:ChangeValue(plr.Name)
+		leftCache[plr.Name] = true
+		notif('KickExploit', plr.DisplayName..' left, cached for rejoin.', 5)
+	end
+	
 	local function clearPlayer(plr)
 		lastFling[plr.Name] = nil
 		for seat, target in tempList do
@@ -4808,11 +4819,7 @@ run(function()
 			end
 		end
 	
-		if not table.find(List.List, plr.Name) then return end
-	
-		List:ChangeValue(plr.Name)
-		leftCache[plr.Name] = true
-		notif('KickExploit', plr.DisplayName..' left, cached for rejoin.', 5)
+		cacheLeftTarget(plr)
 	end
 	
 	local function restoreCamera()
@@ -4991,6 +4998,14 @@ run(function()
 						local target = getTarget(seat, now)
 						if not target then continue end
 	
+						-- the target can leave between being picked and the fling landing, and
+						-- a cached entity can outlive the player, so presence is checked here
+						if not playersService:FindFirstChild(target.Player.Name) then
+							tempList[seat] = nil
+							cacheLeftTarget(target.Player)
+							continue
+						end
+	
 						if partFling then
 							-- only useful on a corpse, hold the seat until the target dies
 							if target.Humanoid.Health > 0 then
@@ -5160,7 +5175,9 @@ run(function()
 		if not leftCache[plr.Name] then return end
 	
 		leftCache[plr.Name] = nil
-		if not table.find(List.List, plr.Name) then
+		-- the name never left List, cacheLeftTarget only disabled it there, so the enabled
+		-- flag is what has to be restored (a List check would skip the ChangeValue)
+		if not table.find(List.ListEnabled, plr.Name) then
 			List:ChangeValue(plr.Name)
 		end
 		notif('KickExploit', plr.DisplayName..' rejoined, re-added to targets.', 5)
