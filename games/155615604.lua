@@ -317,8 +317,8 @@ run(function()
 	end
 
 	entitylib.isVulnerable = function(entity, attackCheck, skipCheck)
-		-- a guard shooting an innocent inmate is the one case blocked here, and it is the
-		-- only thing skipCheck (Killaura's Team Attack) is allowed to drop
+		-- skipCheck (Killaura's Team Attack) drops the guard block below and, through the
+		-- trailing clause, also lets an inmate reach innocent teammates
 		if attackCheck and not skipCheck and lplr.Team == teams.Guards and entity.Player.Team == teams.Inmates and not entity.Character:GetAttribute('Hostile') then
 			return false
 		end
@@ -1873,10 +1873,11 @@ run(function()
 							NPCs = Targets.NPCs.Enabled,
 							Limit = Max.Value,
 							AttackCheck = true,
-							-- only guards get anything out of this: the base keeps the team
-							-- restriction either way and just clears the innocent inmate
-							-- protection in isVulnerable, which applies to guards alone
-							SkipTeam = TeamAttack.Enabled and lplr.Team == teams.Guards
+							-- the base keeps the team restriction either way and only clears the
+							-- innocent inmate protection in isVulnerable, so this is safe for both
+							-- roles: a guard stops being blocked on innocent inmates and an inmate
+							-- stops being blocked on innocent teammates
+							SkipTeam = TeamAttack.Enabled
 						})
 	
 						if #entities > 0 then
@@ -1937,7 +1938,7 @@ run(function()
 	TeamAttack = Killaura:CreateToggle({
 		Name = 'Team Attack',
 		Default = false,
-		Tooltip = 'Lets guards hit innocent inmates'
+		Tooltip = 'Lets you hit innocent inmates'
 	})
 	AttackRange = Killaura:CreateSlider({
 		Name = 'Attack range',
@@ -4360,11 +4361,14 @@ run(function()
 	end
 	
 	-- "invalid state Running" and "invalid animation" are the CheatDetector flags a laggy
-	-- connection cannot fake, so they are the ones worth an automatic entry
+	-- connection cannot fake, so those always count; the movement flags can be faked, which
+	-- is why they sit behind their own toggles
 	local function isExploitFlag(flagType)
 		if flagType == 'invalid animation' then return true end
+		if flagType:find('invalid state') == 1 then return true end
+		if flagType == 'teleport' then return cheaterOptions.Teleports.Enabled end
 	
-		return flagType:find('invalid state') == 1
+		return flagType == 'speed' and cheaterOptions.Speed.Enabled
 	end
 	
 	-- the reason keeps the raw flag so the list shows what tripped it, and an entry that is
@@ -4385,6 +4389,11 @@ run(function()
 			if callback then
 				CheaterDetector:Clean(playersService.PlayerAdded:Connect(playerAdded))
 				CheaterDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(autoAddCheater))
+	
+				-- Visible is not part of the saved profile, so it is reapplied on enable
+				cheaterOptions.Teleports.Object.Visible = cheaterOptions.AutomaticAdd.Enabled
+				cheaterOptions.Speed.Object.Visible = cheaterOptions.AutomaticAdd.Enabled
+	
 				for _, v in playersService:GetPlayers() do
 					playerAdded(v)
 				end
@@ -4420,7 +4429,28 @@ run(function()
 	cheaterOptions.AutomaticAdd = CheaterDetector:CreateToggle({
 		Name = 'Automatic Add',
 		Default = false,
-		Tooltip = 'Adds a player to the cheater list when CheatDetector flags an invalid humanoid state or an invalid animation.\nThe reason is logged as exploits/<flag>.'
+		Function = function(callback)
+			cheaterOptions.Teleports.Object.Visible = callback
+			cheaterOptions.Speed.Object.Visible = callback
+		end,
+		Tooltip = 'Adds a player to the cheater list when CheatDetector flags an invalid humanoid state or an invalid animation; the two options below add the movement flags as well.\nThe reason is logged as exploits/<flag>.'
+	})
+	
+	-- the movement flags are the ones a laggy connection can fake, so they are opt in
+	cheaterOptions.Teleports = CheaterDetector:CreateToggle({
+		Name = 'Teleports',
+		Default = false,
+		Visible = false,
+		Darker = true,
+		Tooltip = 'Also add players flagged for teleporting'
+	})
+	
+	cheaterOptions.Speed = CheaterDetector:CreateToggle({
+		Name = 'Speed',
+		Default = false,
+		Visible = false,
+		Darker = true,
+		Tooltip = 'Also add players flagged for speeding'
 	})
 	
 	cheaterOptions.Webhook = CheaterDetector:CreateToggle({
