@@ -493,10 +493,12 @@ run(function()
 			local func = connection.Function
 			if func then
 				local shoot = debug.getupvalue(func, 2)
+				-- digging reload/bullet already collapses to nil when shoot is not a
+				-- function, so the match only has to re-check the two derived values
 				local reload = typeof(shoot) == 'function' and debug.getupvalue(shoot, 2) or nil
 				local bullet = typeof(reload) == 'function' and debug.getupvalue(shoot, 16) or nil
 
-				if typeof(shoot) == 'function' and typeof(reload) == 'function' and typeof(bullet) == 'function' then
+				if typeof(reload) == 'function' and typeof(bullet) == 'function' then
 					pl.Shoot = shoot
 					pl.Reload = reload
 					pl.Bullet = bullet
@@ -3838,10 +3840,20 @@ run(function()
 	local pingItem = stats.Network.ServerStatsItem['Data Ping']
 	
 	-- the movement checks compare positions the client only sees fresh while the connection
-	-- keeps up; an unreadable ping counts as fine so detection never silently stops
+	-- keeps up; the Data Ping stat itself only moves about once a second, so the value is
+	-- cached instead of pcall'ing it twenty times a second, and an unreadable ping counts as
+	-- fine so detection never silently stops
+	local pingValue, pingTime = 0, 0
 	local function getPing()
+		local now = os.clock()
+		if now - pingTime < 1 then
+			return pingValue
+		end
+	
+		pingTime = now
 		local success, value = pcall(pingItem.GetValue, pingItem)
-		return success and tonumber(value) or 0
+		pingValue = success and tonumber(value) or 0
+		return pingValue
 	end
 	
 	local whiteliststates = {
@@ -3889,7 +3901,10 @@ run(function()
 					local movement = getPing() <= PingLimit.Value
 	
 					for _, entity in entitylib.List do
-						if entity.Health > 0 and entity.Player and not Cheats.Flagged[entity.Player.UserId] then
+						-- whitelisted players are skipped, the second return of whitelist:get is
+						-- what targetCheck reads too (false only for a protected entry); the
+						-- lookup runs every pass because the whitelist can change at any time
+						if entity.Health > 0 and entity.Player and not Cheats.Flagged[entity.Player.UserId] and select(2, whitelist:get(entity.Player)) then
 							local root = entity.RootPart
 							local humanoid = entity.Humanoid
 							local playerPos = root.Position
@@ -4381,6 +4396,13 @@ run(function()
 		CheaterDetector:AddCheater(plr.Name, 'exploits/'..flagType)
 	end
 	
+	-- Visible is not part of the saved profile, so the sub options follow Automatic Add:
+	-- once when it is switched, once when the module comes back enabled
+	local function syncAutoAddOptions(enabled)
+		cheaterOptions.Teleports.Object.Visible = enabled
+		cheaterOptions.Speed.Object.Visible = enabled
+	end
+	
 	loadCheaters()
 	
 	CheaterDetector = vape.Categories.Utility:CreateModule({
@@ -4390,9 +4412,7 @@ run(function()
 				CheaterDetector:Clean(playersService.PlayerAdded:Connect(playerAdded))
 				CheaterDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(autoAddCheater))
 	
-				-- Visible is not part of the saved profile, so it is reapplied on enable
-				cheaterOptions.Teleports.Object.Visible = cheaterOptions.AutomaticAdd.Enabled
-				cheaterOptions.Speed.Object.Visible = cheaterOptions.AutomaticAdd.Enabled
+				syncAutoAddOptions(cheaterOptions.AutomaticAdd.Enabled)
 	
 				for _, v in playersService:GetPlayers() do
 					playerAdded(v)
@@ -4429,10 +4449,7 @@ run(function()
 	cheaterOptions.AutomaticAdd = CheaterDetector:CreateToggle({
 		Name = 'Automatic Add',
 		Default = false,
-		Function = function(callback)
-			cheaterOptions.Teleports.Object.Visible = callback
-			cheaterOptions.Speed.Object.Visible = callback
-		end,
+		Function = syncAutoAddOptions,
 		Tooltip = 'Adds a player to the cheater list when CheatDetector flags an invalid humanoid state or an invalid animation; the two options below add the movement flags as well.\nThe reason is logged as exploits/<flag>.'
 	})
 	
