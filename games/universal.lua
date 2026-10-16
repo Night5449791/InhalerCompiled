@@ -6242,7 +6242,7 @@ run(function()
 	
 		local function readURLAndConfig(code)
 			local appCfg = code:find('appServerConfig\" type=\"text\/plain\">')
-			return code:match('(https://[^"\']+/web%-player%.[0-9a-f]+%.js)'), appCfg and httpService:JSONDecode(base64decode(code:sub(appCfg + 35, code:find('<', appCfg + 1) - 1))) or nil
+			return code:match('(https://[^"\']+/web%-player/web%-player%.[0-9a-f]+%.js)'), appCfg and httpService:JSONDecode(base64decode(code:sub(appCfg + 35, code:find('<', appCfg + 1) - 1))) or nil
 		end
 	
 		local function readOTPCodes(code)

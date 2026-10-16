@@ -4833,13 +4833,14 @@ run(function()
 		return (lastFling[a.Player.Name] or 0) < (lastFling[b.Player.Name] or 0)
 	end
 	
-	local function getTarget(seat, now)
+	local function getTarget(seat, now, deadOnly)
 		local cached = tempList[seat]
 		if cached then
 			local humanoid = cached.Humanoid
-			if cached.RootPart:IsDescendantOf(workspace) and not (humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored) then
+			if (not deadOnly or humanoid.Health <= 0) and cached.RootPart:IsDescendantOf(workspace) and not (humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored) then
 				return cached
 			end
+			tempList[seat] = nil
 		end
 	
 		if not entitylib.isAlive then
@@ -4858,6 +4859,7 @@ run(function()
 				if entity.Player.Team == teams.Neutral then continue end
 				if individual and not table.find(enabled, entity.Player.Name) then continue end
 				local humanoid = entity.Humanoid
+				if deadOnly and humanoid.Health > 0 then continue end
 				if humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored then continue end
 				if not entity.RootPart:IsDescendantOf(workspace) then continue end
 				if (now - entity.SpawnTime) <= 2 then continue end
@@ -5095,7 +5097,7 @@ run(function()
 						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
-					local owned, flung, waiting, flungHumanoid
+					local owned, flung, flungHumanoid
 					local partFling = Equipment.Enabled and KickMode.Value == 'Killfling'
 					setMaxSimRadius()
 	
@@ -5104,7 +5106,7 @@ run(function()
 	
 						owned = true
 	
-						local target = getTarget(seat, now)
+						local target = getTarget(seat, now, partFling)
 						if not target then continue end
 	
 						-- the target can leave between being picked and the fling landing, and
@@ -5116,9 +5118,8 @@ run(function()
 						end
 	
 						if partFling then
-							-- only useful on a corpse, hold the seat until the target dies
 							if target.Humanoid.Health > 0 then
-								waiting = true
+								tempList[seat] = nil
 								continue
 							end
 	
@@ -5167,7 +5168,7 @@ run(function()
 						restoreCamera()
 					end
 	
-					if not flung and not waiting and next(seats) and (now - targetTimer) > 5 then
+					if not flung and next(seats) and (now - targetTimer) > 5 then
 						targetTimer = now
 						notif('KickExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
