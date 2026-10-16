@@ -6241,7 +6241,7 @@ run(function()
 		end
 	
 		local function readURLAndConfig(code)
-			local appCfg = code:find('appServerConfig\" type=\"text\/plain\">')
+			local appCfg = code:find('appServerConfig" type="text/plain">')
 			return code:match('(https://[^"\']+/web%-player/web%-player%.[0-9a-f]+%.js)'), appCfg and httpService:JSONDecode(base64decode(code:sub(appCfg + 35, code:find('<', appCfg + 1) - 1))) or nil
 		end
 	
@@ -7019,6 +7019,26 @@ run(function()
 		Min = 0,
 		Max = 1,
 		Decimal = 10
+	})
+end)
+
+run(function()
+	local AntiRagdoll
+	
+	AntiRagdoll = vape.Categories.Utility:CreateModule({
+		Name = 'AntiRagdoll',
+		Function = function(callback)
+			if entitylib.isAlive then
+				entitylib.character.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, not callback)
+			end
+	
+			if callback then
+				AntiRagdoll:Clean(entitylib.Events.LocalAdded:Connect(function(char)
+					char.Humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+				end))
+			end
+		end,
+		Tooltip = 'Prevents you from getting knocked down in a ragdoll state'
 	})
 end)
 
