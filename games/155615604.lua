@@ -3976,6 +3976,7 @@ run(function()
 	carOverlap.FilterType = Enum.RaycastFilterType.Include
 	carOverlap.MaxParts = 1
 	
+	local whitelist = vape.Libraries.whitelist
 	local stats = cloneref(game:GetService('Stats'))
 	local pingItem = stats.Network.ServerStatsItem['Data Ping']
 	
@@ -4015,6 +4016,8 @@ run(function()
 		Function = function(callback)
 			if callback then
 				CheatDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(function(plr, flagType)
+					if whitelist:get(plr) ~= 0 then return end
+	
 					notif('CheatDetector', 'This player may be cheating! ('..flagType..'): '..plr.Name, 15, 'warning')
 					if AddTarget.Enabled then
 						tempTargets[plr.Name] = true
@@ -4041,7 +4044,7 @@ run(function()
 					local movement = getPing() <= PingLimit.Value
 	
 					for _, entity in entitylib.List do
-						if entity.Health > 0 and entity.Player and not Cheats.Flagged[entity.Player.UserId] then
+						if entity.Health > 0 and entity.Player and whitelist:get(entity.Player) == 0 and not Cheats.Flagged[entity.Player.UserId] then
 							local root = entity.RootPart
 							local humanoid = entity.Humanoid
 							local playerPos = root.Position
@@ -4119,6 +4122,7 @@ end)
 run(function()
 	local CheaterDetector
 	local webhookUrl
+	local whitelist = vape.Libraries.whitelist
 	local DB_VERSION = 3
 	local cheaterOptions = {}
 	local filePath = 'newvape/cheaters.json'
@@ -4145,6 +4149,10 @@ run(function()
 	
 	local function trimText(text)
 		return text and text:match('^%s*(.-)%s*$') or nil
+	end
+	
+	local function isWhitelisted(plr)
+		return whitelist:get(plr) ~= 0
 	end
 	
 	-- vape.Notifications only exists once the gui is loaded, this file runs before that
@@ -4432,7 +4440,7 @@ run(function()
 	end
 	
 	local function playerAdded(plr)
-		if plr == lplr then return end
+		if plr == lplr or isWhitelisted(plr) then return end
 	
 		local reason = getCheaterReason(plr)
 		if reason then
@@ -4445,7 +4453,7 @@ run(function()
 		if flagType ~= 'invalid animation' and flagType:find('invalid state') ~= 1
 			and not (flagType == 'teleport' and cheaterOptions.Teleports.Enabled)
 			and not (flagType == 'speed' and cheaterOptions.Speed.Enabled) then return end
-		if plr == lplr or getCheaterReason(plr) then return end
+		if plr == lplr or isWhitelisted(plr) or getCheaterReason(plr) then return end
 	
 		if cheaterOptions.KXAutoAdd.Value == 'KX compatible' then
 			local message = '.addskid '..plr.DisplayName..' exploits/'..flagType..'(inhalerautoaddskid)'
