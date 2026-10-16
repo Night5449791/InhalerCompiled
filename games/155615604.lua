@@ -3818,8 +3818,12 @@ run(function()
 		Tooltip = 'Runs a chat command without opening the chat. Press Enter to execute.',
 		Function = function(enter)
 			if enter and CommandBox and CommandBox.Value ~= '' then
+				local command = CommandBox.Value
+				if command:sub(1, 1) ~= '.' then
+					command = '.'..command
+				end
 				-- the command never reaches the chat, so the box is emptied to show it ran
-				if onChatted(CommandBox.Value) then
+				if onChatted(command) then
 					CommandBox:SetValue('')
 				end
 			end
@@ -3855,6 +3859,10 @@ run(function()
 	local whitelist = vape.Libraries.whitelist
 	local stats = cloneref(game:GetService('Stats'))
 	local pingItem = stats.Network.ServerStatsItem['Data Ping']
+	
+	local function isWhitelisted(plr)
+		return select(1, whitelist:get(plr)) ~= 0
+	end
 	
 	-- the movement checks compare positions the client only sees fresh while the connection
 	-- keeps up; the Data Ping stat itself only moves about once a second, so the value is
@@ -3892,7 +3900,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				CheatDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(function(plr, flagType)
-					if not select(2, whitelist:get(plr)) then return end
+					if isWhitelisted(plr) then return end
 	
 					notif('CheatDetector', 'This player may be cheating! ('..flagType..'): '..plr.Name, 15, 'warning')
 					if AddTarget.Enabled then
@@ -3920,7 +3928,7 @@ run(function()
 					local movement = getPing() <= PingLimit.Value
 	
 					for _, entity in entitylib.List do
-						if entity.Health > 0 and entity.Player and select(2, whitelist:get(entity.Player)) and not Cheats.Flagged[entity.Player.UserId] then
+						if entity.Health > 0 and entity.Player and not isWhitelisted(entity.Player) and not Cheats.Flagged[entity.Player.UserId] then
 							local root = entity.RootPart
 							local humanoid = entity.Humanoid
 							local playerPos = root.Position
@@ -4028,7 +4036,7 @@ run(function()
 	end
 	
 	local function isWhitelisted(plr)
-		return not select(2, whitelist:get(plr))
+		return select(1, whitelist:get(plr)) ~= 0
 	end
 	
 	-- vape.Notifications only exists once the gui is loaded, this file runs before that
