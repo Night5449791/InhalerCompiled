@@ -1781,19 +1781,6 @@ run(function()
 			DiedTP:Clean(addedConnection)
 	
 			local respawnConnection = lplr.CharacterAdded:Connect(function(char)
-				local autoPickup = vape.Modules.AutoPickup
-				if autoPickup and autoPickup.Enabled and autoPickup.OnDiedTPRespawn then
-					local destination = lastDeath
-					if isCriminalTeam() then
-						destination = nil
-					end
-	
-					if autoPickup:OnDiedTPRespawn(char, destination) then
-						lastDeath = nil
-						return
-					end
-				end
-	
 				task.spawn(returnToLastDeath, char, currentGeneration)
 			end)
 			table.insert(connections, respawnConnection)
@@ -5733,10 +5720,7 @@ run(function()
 					died = false
 	
 					if AutoPickOnDied.Enabled then
-						local diedTP = vape.Modules.DiedTP
-						if not (diedTP and diedTP.Enabled) then
-							pickupAfterRespawn(entity and entity.Character)
-						end
+						pickupAfterRespawn(entity and entity.Character)
 					end
 				end
 			end
@@ -5806,15 +5790,8 @@ run(function()
 	AutoPickOnDied = AutoPickup:CreateToggle({
 		Name = 'OnDied',
 		Default = false,
-		Tooltip = 'Teleport to the gun spawner after respawning, grab a gun and return. Works with DiedTP.'
+		Tooltip = 'Teleport to the gun spawner after respawning, grab a gun and return.'
 	})
-	
-	function AutoPickup:OnDiedTPRespawn(char, destination)
-		if not (self.Enabled and AutoPickOnDied.Enabled) then return false end
-	
-		pickupAfterRespawn(char, destination)
-		return true
-	end
 	
 	for _, team in {'Prisoner', 'Guard', 'Criminal'} do
 		PickupList[team] = AutoPickup:CreateTextList({
