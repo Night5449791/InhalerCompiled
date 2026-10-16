@@ -2052,6 +2052,7 @@ run(function()
 			characterConnection:Disconnect()
 			characterConnection = nil
 		end
+		lastDeath = nil
 	end
 	
 	local function getRoot(char)
@@ -2097,6 +2098,7 @@ run(function()
 	
 		if enabled and currentGeneration == generation and root.Parent then
 			root.CFrame = lastDeath
+			lastDeath = nil
 		end
 	end
 	
