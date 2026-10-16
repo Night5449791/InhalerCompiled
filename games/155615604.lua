@@ -941,8 +941,8 @@ run(function()
 		-- payload the server validates the shot with can be built from any of them, and
 		-- stopping at the first match left the one that mattered behind
 		for level = 4, 8 do
-			local stack = debug.getstack(level)
-			if not stack then break end
+			local success, stack = pcall(debug.getstack, level)
+			if not success or not stack then break end
 
 			for index, value in stack do
 				if value == origin then
@@ -1760,12 +1760,6 @@ run(function()
 		local root = getRoot(char) or char:WaitForChild('HumanoidRootPart', 5) or char:FindFirstChild('RootPart')
 		if not root or not lastDeath or not enabled or currentGeneration ~= generation or isCriminalTeam() then return end
 	
-		local humanoid = char:FindFirstChildOfClass('Humanoid')
-		if humanoid and humanoid.SeatPart then
-			humanoid.Sit = false
-			task.wait(0.1)
-		end
-	
 		if enabled and currentGeneration == generation and root.Parent and not isCriminalTeam() then
 			root.CFrame = lastDeath
 			lastDeath = nil
@@ -1784,12 +1778,16 @@ run(function()
 	
 			local addedConnection = entitylib.Events.LocalAdded:Connect(function(entity)
 				if not enabled or currentGeneration ~= generation then return end
-				local char = entity and entity.Character
-				watchCharacter(char)
-				task.spawn(returnToLastDeath, char, currentGeneration)
+				watchCharacter(entity and entity.Character)
 			end)
 			table.insert(connections, addedConnection)
 			DiedTP:Clean(addedConnection)
+	
+			local respawnConnection = lplr.CharacterAdded:Connect(function(char)
+				task.spawn(returnToLastDeath, char, currentGeneration)
+			end)
+			table.insert(connections, respawnConnection)
+			DiedTP:Clean(respawnConnection)
 	
 			local removedConnection = entitylib.Events.LocalRemoved:Connect(function(entity)
 				if enabled and currentGeneration == generation and entity and entity.Character and not lastDeath then
