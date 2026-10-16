@@ -3302,9 +3302,13 @@ run(function()
 	-- Player lookup
 	
 	-- entries are either entities, which expose their player, or plain players.
-	-- filter drops entries, an exact match wins over the first prefix match
+	-- filter drops entries; exact matches win over wildcard and prefix matches.
 	local function search(list, lowered, filter)
-		local partial
+		local partial, wildcardMatch
+		local pattern
+		if lowered:find('*', 1, true) then
+			pattern = '^'..lowered:gsub('([%^%$%(%)%%%.%[%]%+%-%?])', '%%%1'):gsub('%*', '.*')..'$'
+		end
 	
 		for _, entry in list do
 			if filter and not filter(entry) then continue end
@@ -3315,12 +3319,16 @@ run(function()
 				return entry
 			end
 	
+			if pattern and not wildcardMatch and (name:match(pattern) or display:match(pattern)) then
+				wildcardMatch = entry
+			end
+	
 			if not partial and (name:sub(1, #lowered) == lowered or display:sub(1, #lowered) == lowered) then
 				partial = entry
 			end
 		end
 	
-		return partial
+		return wildcardMatch or partial
 	end
 	
 	local function findEntity(prefix, includeDead)
@@ -4016,7 +4024,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				CheatDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(function(plr, flagType)
-					if whitelist:get(plr) ~= 0 then return end
+					if not select(2, whitelist:get(plr)) then return end
 	
 					notif('CheatDetector', 'This player may be cheating! ('..flagType..'): '..plr.Name, 15, 'warning')
 					if AddTarget.Enabled then
@@ -4044,7 +4052,7 @@ run(function()
 					local movement = getPing() <= PingLimit.Value
 	
 					for _, entity in entitylib.List do
-						if entity.Health > 0 and entity.Player and whitelist:get(entity.Player) == 0 and not Cheats.Flagged[entity.Player.UserId] then
+						if entity.Health > 0 and entity.Player and select(2, whitelist:get(entity.Player)) and not Cheats.Flagged[entity.Player.UserId] then
 							local root = entity.RootPart
 							local humanoid = entity.Humanoid
 							local playerPos = root.Position
@@ -4152,7 +4160,7 @@ run(function()
 	end
 	
 	local function isWhitelisted(plr)
-		return whitelist:get(plr) ~= 0
+		return not select(2, whitelist:get(plr))
 	end
 	
 	-- vape.Notifications only exists once the gui is loaded, this file runs before that
