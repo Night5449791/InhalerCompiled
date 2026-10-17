@@ -1923,7 +1923,14 @@ run(function()
 	end
 	
 	local function getEntities()
-		if not SkipTeam.Enabled or lplr.Team ~= teams.Guards then
+		local localTeam = lplr.Team
+		local teamFiltering = SkipTeam.Enabled and (
+			localTeam == teams.Guards
+			or localTeam == teams.Prisoners
+			or localTeam == teams.Criminals
+		)
+	
+		if not teamFiltering then
 			table.clear(skipTeamTargets)
 			table.clear(skipTeamDistances)
 			return entitylib.AllPosition({
@@ -1949,8 +1956,12 @@ run(function()
 			if not players and entity.Player then continue end
 			if not npcs and entity.NPC then continue end
 			if entity.Player then
-				if entity.Player.Team == teams.Guards then continue end
-				if entity.Player.Team ~= teams.Prisoners and not entity.Targetable then continue end
+				local targetTeam = entity.Player.Team
+				if localTeam == teams.Guards then
+					if targetTeam ~= teams.Prisoners and targetTeam ~= teams.Criminals then continue end
+				elseif targetTeam ~= teams.Guards and targetTeam ~= teams.Prisoners and targetTeam ~= teams.Criminals then
+					continue
+				end
 			elseif not entity.Targetable then
 				continue
 			end
