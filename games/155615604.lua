@@ -47,6 +47,7 @@ local arrestCooldown = os.clock()
 local tempTargets = {}
 local gamepasses = {}
 local flatMask = Vector3.new(1, 0, 1)
+local RemoteSpammer
 
 local function checkPoint(pos, params)
 	for _, part in workspace:GetPartBoundsInRadius(pos, 0, params) do
@@ -809,6 +810,63 @@ end)
 
 for _, v in {'Reach', 'Jesus', 'MurderMystery', 'StaffDetector', 'FullBright', 'Health', 'GamingChair'} do
 	vape:Remove(v)
+end
+
+local Payload
+local payload
+local payloadSize
+
+local function getPayload()
+	if not payload or payloadSize ~= Payload.Value then
+		payloadSize = Payload.Value
+		payload = table.create(payloadSize)
+		for index = 1, payloadSize do
+			payload[index] = {id = index, v = index * 2}
+		end
+	end
+
+	return payload
+end
+
+local function getRemote()
+	local container = game:FindFirstChild('RobloxReplicatedStorage')
+	local remote = container and container:FindFirstChild('UpdatePlayerBlockList')
+	return remote and cloneref(remote)
+end
+
+RemoteSpammer = vape.Categories.World:CreateModule({
+	Name = 'RemoteSpammer',
+	Function = function(callback)
+		if callback then
+			notif('RemoteSpammer', 'Spamming the block list remote.', 5)
+
+			repeat
+				local remote = getRemote()
+				if remote then
+					pcall(remote.FireServer, remote, getPayload())
+				end
+
+				runService.Heartbeat:Wait()
+			until not RemoteSpammer.Enabled
+		else
+			payload = nil
+		end
+	end,
+	Tooltip = 'Spams the UpdatePlayerBlockList remote with a huge payload to lag the server.'
+})
+Payload = RemoteSpammer:CreateSlider({
+	Name = 'Payload',
+	Min = 1000,
+	Max = 300000,
+	Default = 150000,
+	Tooltip = 'Entries in each payload, bigger is heavier but more likely to be rejected.'
+})
+
+local remoteSpammerLoad = RemoteSpammer.Load
+function RemoteSpammer:Load(data)
+	local settings = table.clone(data)
+	settings.Enabled = false
+	return remoteSpammerLoad(self, settings)
 end
 
 run(function()
@@ -1845,7 +1903,6 @@ run(function()
 	local ParticleColor2
 	local ParticleSize
 	local Face
-	local TeamAttack
 	local Overlay = OverlapParams.new()
 	Overlay.FilterType = Enum.RaycastFilterType.Include
 	local Particles, Boxes, AttackDelay = {}, {}, tick()
@@ -1874,8 +1931,7 @@ run(function()
 							Players = Targets.Players.Enabled,
 							NPCs = Targets.NPCs.Enabled,
 							Limit = Max.Value,
-							AttackCheck = true,
-							KillauraTeamAttack = TeamAttack.Enabled
+							AttackCheck = true
 						})
 	
 						if #entities > 0 then
@@ -1932,11 +1988,6 @@ run(function()
 	})
 	Targets = Killaura:CreateTargets({
 		Players = true
-	})
-	TeamAttack = Killaura:CreateToggle({
-		Name = 'Team Attack',
-		Default = false,
-		Tooltip = 'Lets you hit innocent inmates'
 	})
 	AttackRange = Killaura:CreateSlider({
 		Name = 'Attack range',
@@ -2913,13 +2964,19 @@ run(function()
 	end
 	
 	local function joinFirstTeam()
-		local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-		if not teamGui then return end
-		for _, holder in teamGui:GetChildren() do
-			if holder.Button.AutoButtonColor then
-				firesignal(holder.Button.MouseButton1Click)
-				return
+		while lplr.Neutral and AutoTeam.Enabled do
+			local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
+			if teamGui then
+				for _, holder in teamGui:GetChildren() do
+					local button = holder:FindFirstChild('Button')
+					if button and button.AutoButtonColor then
+						firesignal(button.MouseButton1Click)
+						break
+					end
+				end
 			end
+	
+			task.wait(0.1)
 		end
 	end
 	
@@ -4482,63 +4539,6 @@ run(function()
 end)
 
 run(function()
-	local RemoteSpammer
-	local Payload
-	local payload
-	local payloadSize
-	
-	-- the size of the payload is what makes each fire expensive, so it is only rebuilt
-	-- when the slider moves
-	local function getPayload()
-		if not payload or payloadSize ~= Payload.Value then
-			payloadSize = Payload.Value
-			payload = table.create(payloadSize)
-			for index = 1, payloadSize do
-				payload[index] = {id = index, v = index * 2}
-			end
-		end
-	
-		return payload
-	end
-	
-	local function getRemote()
-		local container = game:FindFirstChild('RobloxReplicatedStorage')
-		local remote = container and container:FindFirstChild('UpdatePlayerBlockList')
-		return remote and cloneref(remote)
-	end
-	
-	RemoteSpammer = vape.Categories.World:CreateModule({
-		Name = 'RemoteSpammer',
-		Function = function(callback)
-			if callback then
-				notif('RemoteSpammer', 'Spamming the block list remote.', 5)
-	
-				repeat
-					local remote = getRemote()
-					if remote then
-						-- a payload this large can be rejected, which must not kill the spam
-						pcall(remote.FireServer, remote, getPayload())
-					end
-	
-					runService.Heartbeat:Wait()
-				until not RemoteSpammer.Enabled
-			else
-				payload = nil -- not worth holding a payload this size while the module is off
-			end
-		end,
-		Tooltip = 'Spams the UpdatePlayerBlockList remote with a huge payload to lag the server.'
-	})
-	Payload = RemoteSpammer:CreateSlider({
-		Name = 'Payload',
-		Min = 1000,
-		Max = 300000,
-		Default = 150000,
-		Tooltip = 'Entries in each payload, bigger is heavier but more likely to be rejected.'
-	})
-	
-end)
-
-run(function()
 	local AutoArmor
 	local pickups = {}
 	
@@ -4691,7 +4691,7 @@ run(function()
 	local PickupList = {}
 	local died = false
 	-- the same spot KickExploit grabs its gun from, standing on it keeps us in the spawner's range
-	local PICKUP_GUN_POSITION = Vector3.new(816, 98, 2233)
+	local PICKUP_GUN_POSITION = Vector3.new(816, 98, 2225)
 	local PICKUP_GUN_CFRAME = CFrame.new(PICKUP_GUN_POSITION)
 	
 	local function AddPickup(pickup)
