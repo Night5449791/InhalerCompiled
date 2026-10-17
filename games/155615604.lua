@@ -2512,6 +2512,8 @@ run(function()
 	
 	local MAX_STACK = 4
 	local LIFETIME = 2.5
+	local FADE = 0.3
+	local FADE_INFO = TweenInfo.new(FADE)
 	local ENTRY_W, ENTRY_H, ENTRY_STEP = 460, 22, 25
 	local offset
 	local positions = {}
@@ -2668,7 +2670,13 @@ run(function()
 						..(kHealth and ' [<font color="'..kHealthHex..'">'..kHealth..'%</font>]' or '')..' killed '
 						..(vHex and '<font color="'..vHex..'">'..vDisp..'</font>' or vDisp)
 						..(weapon and ' ['..weapon..']' or '')
+					entry.TextTransparency = 1
+					entry.TextStrokeTransparency = 1
 					entry.Parent = feed
+					tweenService:Create(entry, FADE_INFO, {
+						TextTransparency = 0,
+						TextStrokeTransparency = 0.7
+					}):Play()
 	
 					table.insert(stack, 1, entry)
 					if #stack > MAX_STACK then
@@ -2679,8 +2687,17 @@ run(function()
 						stack[i].Position = positions[i]
 					end
 	
-					task.delay(LIFETIME, function()
+					task.delay(LIFETIME - FADE, function()
 						local idx = table.find(stack, entry)
+						if not idx then return end
+	
+						tweenService:Create(entry, FADE_INFO, {
+							TextTransparency = 1,
+							TextStrokeTransparency = 1
+						}):Play()
+						task.wait(FADE)
+	
+						idx = table.find(stack, entry)
 						if not idx then return end
 						table.remove(stack, idx)
 						entry:Destroy()
