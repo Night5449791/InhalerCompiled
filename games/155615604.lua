@@ -2154,73 +2154,6 @@ run(function()
 end)
 
 run(function()
-	local ToolGrip
-	local DefaultGrip = Vector3.new(1, 2, 0)
-	local LongerGrip = Vector3.new(1, 2, 1.5)
-	local ToolGrips = {
-		['Remington 870'] = LongerGrip,
-		['AK-47'] = LongerGrip,
-		M4A1 = LongerGrip,
-		FAL = LongerGrip,
-		['MP5'] = DefaultGrip,
-		['M9'] = DefaultGrip,
-		Taser = DefaultGrip
-	}
-	local originalGrips = setmetatable({}, {
-		__mode = 'k'
-	})
-	
-	local function ApplyGrip(tool)
-		if not tool:IsA('Tool') then return end
-	
-		local grip = ToolGrips[tool.Name]
-		if not grip or tool.GripPos == grip then return end
-	
-		if originalGrips[tool] == nil then
-			originalGrips[tool] = tool.GripPos
-		end
-	
-		tool.GripPos = grip
-	end
-	
-	local function RestoreGrips()
-		for tool, grip in originalGrips do
-			tool.GripPos = grip
-		end
-	
-		table.clear(originalGrips)
-	end
-	
-	local function EntityAdded()
-		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
-		if not backpack then
-			return
-		end
-	
-		ToolGrip:Clean(backpack.ChildAdded:Connect(ApplyGrip))
-		for _, tool in backpack:GetChildren() do
-			ApplyGrip(tool)
-		end
-	end
-	
-	ToolGrip = vape.Categories.Blatant:CreateModule({
-		Name = 'ToolGrip',
-		Function = function(callback)
-			if callback then
-				ToolGrip:Clean(entitylib.Events.LocalAdded:Connect(EntityAdded))
-				if entitylib.isAlive then
-					task.spawn(EntityAdded)
-				end
-			else
-				RestoreGrips()
-			end
-		end,
-		Tooltip = 'applies tool grip pos'
-	})
-	
-end)
-
-run(function()
 	local VehicleFly
 	local Mode
 	local Speed
@@ -2733,6 +2666,73 @@ run(function()
 		end
 	})
 	offset = height.Value
+end)
+
+run(function()
+	local ToolGrip
+	local DefaultGrip = Vector3.new(1, 2, 0)
+	local LongerGrip = Vector3.new(1, 2, 1.5)
+	local ToolGrips = {
+		['Remington 870'] = LongerGrip,
+		['AK-47'] = LongerGrip,
+		M4A1 = LongerGrip,
+		FAL = LongerGrip,
+		['MP5'] = DefaultGrip,
+		['M9'] = DefaultGrip,
+		Taser = DefaultGrip
+	}
+	local originalGrips = setmetatable({}, {
+		__mode = 'k'
+	})
+	
+	local function ApplyGrip(tool)
+		if not tool:IsA('Tool') then return end
+	
+		local grip = ToolGrips[tool.Name]
+		if not grip or tool.GripPos == grip then return end
+	
+		if originalGrips[tool] == nil then
+			originalGrips[tool] = tool.GripPos
+		end
+	
+		tool.GripPos = grip
+	end
+	
+	local function RestoreGrips()
+		for tool, grip in originalGrips do
+			tool.GripPos = grip
+		end
+	
+		table.clear(originalGrips)
+	end
+	
+	local function EntityAdded()
+		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
+		if not backpack then
+			return
+		end
+	
+		ToolGrip:Clean(backpack.ChildAdded:Connect(ApplyGrip))
+		for _, tool in backpack:GetChildren() do
+			ApplyGrip(tool)
+		end
+	end
+	
+	ToolGrip = vape.Categories.Render:CreateModule({
+		Name = 'ToolGrip',
+		Function = function(callback)
+			if callback then
+				ToolGrip:Clean(entitylib.Events.LocalAdded:Connect(EntityAdded))
+				if entitylib.isAlive then
+					task.spawn(EntityAdded)
+				end
+			else
+				RestoreGrips()
+			end
+		end,
+		Tooltip = 'applies tool grip pos'
+	})
+	
 end)
 
 run(function()
@@ -4373,6 +4373,457 @@ run(function()
 end)
 
 run(function()
+	local AntiFling
+	local modified = {}
+	
+	local function LocalAdded(entity)
+		for _, prompt in workspace.CarContainer:QueryDescendants('ProximityPrompt') do
+			prompt.Enabled = not entity.Humanoid.SeatPart and not prompt.Parent.Occupant
+		end
+	
+		AntiFling:Clean(entity.Humanoid:GetPropertyChangedSignal('SeatPart'):Connect(function()
+			for _, prompt in workspace.CarContainer:QueryDescendants('ProximityPrompt') do
+				prompt.Enabled = not entity.Humanoid.SeatPart and not prompt.Parent.Occupant
+			end
+		end))
+	end
+	
+	local function Modify(part)
+		if part:IsA('BasePart') and part.CollisionGroup ~= 'Wheels' then
+			if not modified[part] then
+				modified[part] = {part.CanCollide, part.CanQuery}
+			end
+	
+			if (part:IsA('Seat') or part:IsA('VehicleSeat')) and part.Name == part.ClassName then
+				local connection
+				local prox = Instance.new('ProximityPrompt')
+				prox.ActionText = 'Enter'
+				prox.Enabled = not part.Occupant
+				prox.MaxActivationDistance = 10
+				prox.RequiresLineOfSight = false
+				prox.Parent = part
+	
+				prox.Triggered:Connect(function()
+					if entitylib.isAlive then
+						part:Sit(entitylib.character.Humanoid)
+					end
+				end)
+	
+				prox.Destroying:Connect(function()
+					connection:Disconnect()
+				end)
+	
+				connection = part:GetPropertyChangedSignal('Occupant'):Connect(function()
+					prox.Enabled = not part.Occupant
+				end)
+			end
+	
+			part.CanCollide = false
+			part.CanTouch = false
+		end
+	end
+	
+	AntiFling = vape.Categories.World:CreateModule({
+		Name = 'AntiFling',
+		Function = function(callback)
+			if callback then
+				AntiFling:Clean(workspace.CarContainer.DescendantAdded:Connect(Modify))
+				AntiFling:Clean(entitylib.Events.LocalAdded:Connect(LocalAdded))
+	
+				for _, part in workspace.CarContainer:QueryDescendants('BasePart') do
+					Modify(part)
+				end
+	
+				if entitylib.isAlive then
+					LocalAdded(entitylib.character)
+				end
+			else
+				for part, value in modified do
+					part.CanCollide = value[1]
+					part.CanTouch = value[2]
+				end
+	
+				for _, prompt in workspace.CarContainer:QueryDescendants('ProximityPrompt') do
+					prompt:Destroy()
+				end
+	
+				table.clear(modified)
+			end
+		end,
+		Tooltip = 'Prevent certain methods of flinging you'
+	})
+end)
+
+run(function()
+	if false then
+	local FlingExploit
+	local Mode
+	local List
+	local Movement
+	local ViewTarget
+	local seats = {}
+	local spawners = {}
+	local teamButtons = {}
+	local candidateList = {}
+	local candidateTime = 0
+	local didClick = {}
+	local lastFling = {}
+	local tempList = setmetatable({}, {
+		__mode = 'k'
+	})
+	local CYAN = BrickColor.new('Cyan')
+	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
+	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
+	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
+	
+	local seatsDirty = false
+	
+	local function refreshSeats()
+		table.clear(seats)
+		for _, seat in workspace.CarContainer:QueryDescendants('VehicleSeat') do
+			table.insert(seats, seat)
+		end
+	
+		seatsDirty = false
+	end
+	
+	local function getSpawners()
+		if next(spawners) then
+			return spawners
+		end
+	
+		for _, button in workspace.Prison_ITEMS.buttons:GetChildren() do
+			if button.Name == 'Car Spawner' then
+				local part = button['Car Spawner']
+				if part then
+					table.insert(spawners, part)
+				end
+			end
+		end
+	
+		return spawners
+	end
+	
+	local function sortTeams(a, b)
+		return (a.Name == 'Inmates' and 1 or 2) < (b.Name == 'Inmates' and 1 or 2)
+	end
+	
+	local function getTeamButtons()
+		if next(teamButtons) then
+			if teamButtons[1].Parent then
+				return teamButtons
+			end
+	
+			table.clear(teamButtons)
+		end
+	
+		local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
+		if gui then
+			for _, holder in gui:GetChildren() do
+				table.insert(teamButtons, holder)
+			end
+	
+			table.sort(teamButtons, sortTeams)
+		end
+	
+		return teamButtons
+	end
+	
+	local function interact(spawner)
+		replicatedStorage.Remotes.InteractWithItem:InvokeServer(spawner)
+	end
+	
+	local function sortFling(a, b)
+		return (lastFling[a.Player.Name] or 0) < (lastFling[b.Player.Name] or 0)
+	end
+	
+	local function getTarget(seat, now)
+		local cached = tempList[seat]
+		if cached then
+			local humanoid = cached.Humanoid
+			if cached.RootPart:IsDescendantOf(workspace) and not (humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored) then
+				return cached
+			end
+			tempList[seat] = nil
+		end
+	
+		if not entitylib.isAlive then
+			return
+		end
+	
+		if candidateTime ~= now then
+			candidateTime = now
+			table.clear(candidateList)
+	
+			local individual = Mode.Value ~= 'All'
+			local enabled = List.ListEnabled
+			for _, entity in entitylib.List do
+				if isFriend(entity.Player) then continue end
+				if not select(2, whitelist:get(entity.Player)) then continue end
+				if entity.Player.Team == teams.Neutral then continue end
+				if individual and not table.find(enabled, entity.Player.Name) then continue end
+				local humanoid = entity.Humanoid
+				if humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored then continue end
+				if not entity.RootPart:IsDescendantOf(workspace) then continue end
+				if (now - entity.SpawnTime) <= 2 then continue end
+				table.insert(candidateList, entity)
+			end
+	
+			if #candidateList > 1 then
+				table.sort(candidateList, sortFling)
+			end
+		end
+	
+		local target = candidateList[1]
+		if not target then
+			return
+		end
+	
+		table.remove(candidateList, 1)
+		lastFling[target.Player.Name] = now
+		tempList[seat] = target
+		notif('FlingExploit', 'Attempted fling: '..target.Player.Name, 5)
+		return target
+	end
+	
+	local function clearEntity(entity)
+		for seat, target in tempList do
+			if target == entity then
+				tempList[seat] = nil
+			end
+		end
+	end
+	
+	-- the chunk env is not always the executor env, these live on the real global table
+	local function setMaxSimRadius()
+		local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
+		local setsim = (getgenv and getgenv().setsimulationradius) or _G.setsimulationradius or setsimulationradius
+		local setflag = (getgenv and getgenv().setfflag) or _G.setfflag or setfflag
+	
+		if typeof(sethidden) == 'function' then
+			pcall(sethidden, lplr, 'SimulationRadius', 1e9)
+			pcall(sethidden, lplr, 'MaximumSimulationRadius', 1e9)
+		end
+	
+		if typeof(setsim) == 'function' then
+			pcall(setsim, 1e9)
+		end
+	
+		if typeof(setflag) == 'function' then
+			pcall(setflag, 'MinClientSimulationRadius', '1e9')
+			pcall(setflag, 'MaxClientSimulationRadius', '1e9')
+			pcall(setflag, 'MinimalSimRadiusBuffer', '1e9')
+		end
+	end
+	
+	-- isnetworkowner only reports ownership inside the simulation radius, so
+	-- setMaxSimRadius has to run first
+	local function isNetworkOwned(part)
+		local isnetowner = (getgenv and getgenv().isnetworkowner) or _G.isnetworkowner or isnetworkowner
+		if typeof(isnetowner) ~= 'function' then return true end
+	
+		local success, owned = pcall(isnetowner, part)
+		return success and owned
+	end
+	
+	local function clearPlayer(plr)
+		lastFling[plr.Name] = nil
+		for seat, target in tempList do
+			if target.Player == plr then
+				tempList[seat] = nil
+			end
+		end
+	end
+	
+	local function restoreCamera()
+		if entitylib.isAlive then
+			gameCamera.CameraSubject = entitylib.character.Humanoid
+			gameCamera.CameraType = Enum.CameraType.Custom
+		end
+	end
+	
+	FlingExploit = vape.Categories.World:CreateModule({
+		Name = 'FlingExploit',
+		Function = function(callback)
+			if callback then
+				local dir = 0
+				local antiFling = vape.Modules.AntiFling
+	
+				if not antiFling.Enabled then
+					antiFling:Toggle()
+				end
+	
+				local teamTimer = 0
+				local targetTimer = 0
+				local viewing = false
+	
+				refreshSeats()
+				FlingExploit:Clean(workspace.CarContainer.DescendantAdded:Connect(function(obj)
+					if obj:IsA('VehicleSeat') then
+						seatsDirty = true
+					end
+				end))
+				FlingExploit:Clean(workspace.CarContainer.DescendantRemoving:Connect(function(obj)
+					if obj:IsA('VehicleSeat') then
+						seatsDirty = true
+					end
+				end))
+				FlingExploit:Clean(entitylib.Events.EntityRemoved:Connect(clearEntity))
+				FlingExploit:Clean(restoreCamera)
+				FlingExploit:Clean(runService.PostSimulation:Connect(setMaxSimRadius))
+	
+				FlingExploit:Clean(runService.Heartbeat:Connect(function(dt)
+					local now = os.clock()
+	
+					if seatsDirty then
+						refreshSeats()
+					end
+	
+					if lplr.Team == teams.Neutral then
+						if (now - teamTimer) > 0.25 then
+							teamTimer = now
+	
+							for _, holder in getTeamButtons() do
+								if holder.Button.AutoButtonColor then
+									firesignal(holder.Button.MouseButton1Click)
+									break
+								end
+							end
+						end
+	
+						return
+					end
+	
+					if not entitylib.isAlive then
+						return
+					end
+	
+					-- nothing left to fling, every listed target is gone
+					if Mode.Value == 'Individual' and not next(List.List) then
+						notif('FlingExploit', 'No targets left, disabling.', 5)
+						FlingExploit:Toggle()
+						return
+					end
+	
+					local root = entitylib.character.RootPart
+					local rootPos = root.Position
+					local didMove
+	
+					for _, spawner in getSpawners() do
+						local offset = spawner.Position - rootPos
+						local mag = offset.Magnitude
+	
+						if mag < 15 and (didClick[spawner] or 0) < now then
+							didClick[spawner] = now + 0.2
+							seatsDirty = true
+							task.spawn(interact, spawner)
+						end
+	
+						if mag < 50 and spawner.BrickColor == CYAN and not didMove then
+							dir = math.clamp(dir + (math.clamp(offset.X, -1, 1) * dt * 24), -12, 14)
+							didMove = true
+						end
+					end
+	
+					if not didMove then
+						dir = math.clamp(dir + (math.clamp(-dir, -1, 1) * dt * 24), -12, 14)
+					end
+	
+					if Movement.Enabled then
+						root.CFrame = CFrame.new(610 + dir, 98, 2494)
+						root.AssemblyLinearVelocity = DRIVE_VELOCITY
+					end
+	
+					local owned, flung, flungHumanoid
+					setMaxSimRadius()
+	
+					for _, seat in seats do
+						if not isNetworkOwned(seat) then continue end
+	
+						owned = true
+	
+						local target = getTarget(seat, now)
+						if not target then continue end
+	
+						-- the target can leave between being picked and the fling landing, and
+						-- a cached entity can outlive the player, so presence is checked here
+						if not playersService:FindFirstChild(target.Player.Name) then
+							tempList[seat] = nil
+							continue
+						end
+	
+						flung = true
+						flungHumanoid = target.Humanoid
+	
+						-- flings the target's body part: seat velocity + cframe go first,
+						-- then the root part is handed over as the seat's physics rep
+						seat.AssemblyLinearVelocity = NORMAL_VELOCITY
+						seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
+						target.RootPart.AssemblyLinearVelocity = Vector3.zero
+						sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
+						sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
+	
+						local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
+						if wheels then
+							wheels:Destroy()
+						end
+					end
+	
+					if ViewTarget.Enabled and flungHumanoid then
+						gameCamera.CameraSubject = flungHumanoid
+						viewing = true
+					elseif viewing then
+						viewing = false
+						restoreCamera()
+					end
+	
+					if not flung and next(seats) and (now - targetTimer) > 5 then
+						targetTimer = now
+						notif('FlingExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
+					end
+				end))
+			else
+				table.clear(tempList)
+				table.clear(teamButtons)
+				restoreCamera()
+			end
+		end,
+		Tooltip = 'aesthetical, just remove collisions on vehicles please, this is the worst.'
+	})
+	Mode = FlingExploit:CreateDropdown({
+		Name = 'Mode',
+		List = {'All', 'Individual'},
+		Function = function(value)
+			List.Object.Visible = value ~= 'All'
+		end
+	})
+	List = FlingExploit:CreateTextList({
+		Name = 'Targets',
+		Placeholder = 'Roblox username',
+		Player = true,
+		Visible = false,
+		Darker = true
+	})
+	Movement = FlingExploit:CreateToggle({
+		Name = 'Movement',
+		Default = true,
+		Tooltip = 'Drives a car around the prison while flinging.'
+	})
+	ViewTarget = FlingExploit:CreateToggle({
+		Name = 'ViewTarget',
+		Function = function(callback)
+			if not callback then
+				restoreCamera()
+			end
+		end,
+		Tooltip = 'Automatically view the target being flung.'
+	})
+	vape:Clean(playersService.PlayerRemoving:Connect(clearPlayer))
+	end
+	
+end)
+
+run(function()
 	local JoinJobid
 	local Place
 	local JobId
@@ -4590,7 +5041,7 @@ run(function()
 	local items = {}
 	local PickupList = {}
 	local died = false
-	-- the same spot KickExploit grabs its gun from, standing on it keeps us in the spawner's range
+	-- the gun spawn spot; standing on it keeps us in the spawner's range
 	local PICKUP_GUN_POSITION = Vector3.new(816, 98, 2225)
 	local PICKUP_GUN_CFRAME = CFrame.new(PICKUP_GUN_POSITION)
 	

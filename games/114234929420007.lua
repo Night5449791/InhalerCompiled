@@ -612,8 +612,11 @@ vape:Clean(function()
 end)
 
 -- the local rig is an anchored presentation model with no Humanoid, so the physics-based
--- universal movement modules cannot drive it; drop the ones that would just error or no-op
-vape:Remove('Fly')
+-- universal Blatant modules cannot drive it; drop every one of them, plus the inapplicable
+-- Combat/Utility modules
+for _, v in {'AntiFall', 'DiedTP', 'Fly', 'HighJump', 'HitBoxes', 'Invisible', 'Jesus', 'Killaura', 'LongJump', 'MouseTP', 'Phase', 'Speed', 'SpinBot', 'Spider', 'Swim', 'TargetStrafe', 'Timer', 'Reach', 'AntiRagdoll'} do
+	vape:Remove(v)
+end
 
 entitylib.start()
 
@@ -657,6 +660,9 @@ run(function()
 		return entity, entity and entity[Part.Value]
 	end
 
+	-- reused every shot so the wall check does not allocate a fresh ignore table
+	local ignore = {}
+
 	local function hookBullet(self, aimingOptions, isAiming)
 		local bullet = OriginalCreate(self, aimingOptions, isAiming)
 		if not SilentAim.Enabled or type(bullet) ~= 'table' then return bullet end
@@ -667,14 +673,17 @@ run(function()
 		local entity, part = getTarget(origin)
 		if not part then return bullet end
 
+		local position = part.Position
+		ignore[1] = entity.Character
+
 		-- Wallbang only lets the shot through wood (penetrable) surfaces; metal/stone still
 		-- block, and with Wallbang off only a clear line of sight shoots
-		local hit = entitylib.Wallcheck(origin, part.Position, {entity.Character})
+		local hit = entitylib.Wallcheck(origin, position, ignore)
 		if hit and not (Wallbang.Enabled and (hit.Material == Enum.Material.Wood or hit.Material == Enum.Material.WoodPlanks)) then
 			return bullet
 		end
 
-		bullet.Direction = (part.Position - origin).Unit
+		bullet.Direction = (position - origin).Unit
 		if ShowTarget.Enabled then
 			targetinfo.Targets[entity] = os.clock() + 1
 		end
@@ -770,335 +779,5 @@ run(function()
 	})
 	ShowTarget = SilentAim:CreateToggle({
 		Name = 'Show target info'
-	})
-end)
-
-
-local Killaura
-local Targets
-local Range
-local Limit
-local OriginalSend
-
-run(function()
-	local database = replicatedStorage:FindFirstChild('Database')
-	local security = database and database:FindFirstChild('Security')
-	local module = security and security:FindFirstChild('Remotes')
-	if not module then return end
-
-	local suc, Remotes = pcall(require, module)
-	local melee = suc and Remotes.Melee and Remotes.Melee.MeleeAttack
-	if not (melee and typeof(melee.Send) == 'function') then return end
-
-	local participantsModule = replicatedStorage:FindFirstChild('Components')
-	participantsModule = participantsModule and participantsModule:FindFirstChild('Common')
-	participantsModule = participantsModule and participantsModule:FindFirstChild('Participants')
-
-	local Participants
-	if participantsModule then
-		local ok, value = pcall(require, participantsModule)
-		Participants = ok and value or nil
-	end
-
-	-- the melee packet is the client's own swing: Direction/Distance describe the ray from the
-	-- camera, VictimUserId is the hit player or Participants.BotKey(CombatantId) for a bot, and
-	-- Identifier is the knife the swing came from. Copying the packet the game itself sent and
-	-- pointing the victim fields at another entity keeps the identifier and the swing name
-	-- valid without rebuilding any of it.
-	local function victimKey(entity)
-		if entity.Player then
-			return entity.Player.UserId
-		end
-
-		local combatant = entity.Character and entity.Character:GetAttribute('CombatantId')
-		if typeof(combatant) ~= 'number' or not Participants then return end
-
-		local ok, key = pcall(Participants.BotKey, combatant)
-		return ok and key or nil
-	end
-
-	local function send(packet, entity, part)
-		local key = victimKey(entity)
-		if not key then return end
-
-		local origin = gameCamera.CFrame.Position
-		local direction = part.Position - origin
-
-		local copy = table.clone(packet)
-		copy.Instance = nil
-		copy.VictimUserId = key
-		copy.HitPartName = part.Name
-		copy.Position = part.Position
-		copy.Normal = packet.Normal or Vector3.zero
-		copy.Direction = direction
-		copy.Distance = direction.Magnitude
-		pcall(OriginalSend, copy)
-	end
-
-	Killaura = vape.Categories.Blatant:CreateModule({
-		Name = 'Killaura',
-		Function = function(callback)
-			if callback and not OriginalSend then
-				OriginalSend = melee.Send
-				melee.Send = function(packet)
-					local result = OriginalSend(packet)
-					if not Killaura.Enabled or type(packet) ~= 'table' then return result end
-
-					local character = entitylib.character
-					local origin = character and character.RootPart.Position
-					if not origin then return result end
-
-					local list = entitylib.AllPosition({
-						Range = Range.Value,
-						Part = 'Head',
-						Origin = origin,
-						Limit = Limit.Value + 1,
-						Wallcheck = Targets.Walls.Enabled or nil,
-						Players = Targets.Players.Enabled,
-						NPCs = Targets.NPCs.Enabled
-					})
-
-					for _, entity in list do
-						local part = entity.Head
-						if part and victimKey(entity) ~= packet.VictimUserId then
-							send(packet, entity, part)
-						end
-					end
-
-					return result
-				end
-			end
-
-			repeat
-				task.wait(1)
-			until not Killaura.Enabled or vape.Loaded == nil
-
-			if OriginalSend then
-				melee.Send = OriginalSend
-				OriginalSend = nil
-			end
-		end,
-		Tooltip = 'Repeats your knife swing on every target in range'
-	})
-
-	Targets = Killaura:CreateTargets({
-		Players = true,
-		NPCs = true
-	})
-	Range = Killaura:CreateSlider({
-		Name = 'Range',
-		Min = 1,
-		Max = 30,
-		Default = 12,
-		Suffix = function(val)
-			return val == 1 and 'stud' or 'studs'
-		end
-	})
-	Limit = Killaura:CreateSlider({
-		Name = 'Max targets',
-		Min = 1,
-		Max = 6,
-		Default = 3
-	})
-end)
-
-
-run(function()
-	local Speed
-	local Value
-	
-	local runService = game:GetService('RunService')
-	local inputService = game:GetService('UserInputService')
-	
-	local w, s, a, d = 0, 0, 0, 0
-	
-	-- camera-relative movement vector, same convention as the universal calculateMoveVector but
-	-- self-contained (this chunk does not share the universal scope). Ignores pitch, so the input
-	-- maps onto the flat ground plane the way the game's own movement does.
-	local function moveVector()
-		local cam = workspace.CurrentCamera
-		local cf = cam and cam.CFrame
-		if not cf then return Vector3.zero end
-	
-		local _, _, _, R00, R01, R02, _, _, R12, _, _, R22 = cf:GetComponents()
-		local c, s
-		if R12 < 1 and R12 > -1 then
-			c, s = R22, R02
-		else
-			c, s = R00, -R01 * math.sign(R12)
-		end
-	
-		local x = a + d
-		local z = w + s
-		local vec = Vector3.new((c * x + s * z), 0, (c * z - s * x)) / math.sqrt(c * c + s * s)
-		return vec.Unit == vec.Unit and vec.Unit or Vector3.zero
-	end
-	
-	Speed = vape.Categories.Blatant:CreateModule({
-		Name = 'Speed',
-		Function = function(callback)
-			if callback then
-				w = inputService:IsKeyDown(Enum.KeyCode.W) and -1 or 0
-				s = inputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0
-				a = inputService:IsKeyDown(Enum.KeyCode.A) and -1 or 0
-				d = inputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0
-	
-				for _, v in {'InputBegan', 'InputEnded'} do
-					Speed:Clean(inputService[v]:Connect(function(input)
-						if inputService:GetFocusedTextBox() then return end
-	
-						if input.KeyCode == Enum.KeyCode.W then
-							w = v == 'InputBegan' and -1 or 0
-						elseif input.KeyCode == Enum.KeyCode.S then
-							s = v == 'InputBegan' and 1 or 0
-						elseif input.KeyCode == Enum.KeyCode.A then
-							a = v == 'InputBegan' and -1 or 0
-						elseif input.KeyCode == Enum.KeyCode.D then
-							d = v == 'InputBegan' and 1 or 0
-						end
-					end))
-				end
-	
-				-- the local rig is an anchored presentation model with no Humanoid, so the only way
-				-- to move it is to step its CFrame. RenderStepped lands after the game's own movement
-				-- update, so the extra step stays on top of it for the rendered frame.
-				Speed:Clean(runService.RenderStepped:Connect(function(dt)
-					if not entitylib.isAlive then return end
-					local root = entitylib.character.RootPart
-					if not root then return end
-	
-					local movevec = moveVector()
-					if movevec == Vector3.zero then return end
-	
-					root.CFrame = root.CFrame + (movevec * Value.Value * dt)
-				end))
-			end
-		end,
-		Tooltip = 'Steps your character forward with the movement keys (no physics on this game)'
-	})
-	Value = Speed:CreateSlider({
-		Name = 'Speed',
-		Min = 1,
-		Max = 150,
-		Default = 50,
-		Suffix = function(val)
-			return val == 1 and 'stud' or 'studs'
-		end
-	})
-	
-end)
-
-run(function()
-	local SpinBot
-	local Value
-	local XToggle
-	local YToggle
-	local ZToggle
-	
-	local runService = game:GetService('RunService')
-	
-	SpinBot = vape.Categories.Blatant:CreateModule({
-		Name = 'SpinBot',
-		Function = function(callback)
-			if callback then
-				-- the local rig is an anchored presentation model, so spin it by re-writing its root
-				-- CFrame orientation every frame instead of rotating it through physics
-				SpinBot:Clean(runService.RenderStepped:Connect(function()
-					if not entitylib.isAlive then return end
-					local root = entitylib.character.RootPart
-					if not root then return end
-	
-					local val = math.rad((os.clock() * (20 * Value.Value)) % 360)
-					local x, y, z = root.CFrame:ToOrientation()
-					root.CFrame = CFrame.new(root.Position) * CFrame.Angles(
-						XToggle.Enabled and val or x,
-						YToggle.Enabled and val or y,
-						ZToggle.Enabled and val or z
-					)
-				end))
-			end
-		end,
-		Tooltip = 'Makes your character spin around in circles (does not work in first person)'
-	})
-	Value = SpinBot:CreateSlider({
-		Name = 'Speed',
-		Min = 1,
-		Max = 100,
-		Default = 40
-	})
-	XToggle = SpinBot:CreateToggle({
-		Name = 'Spin X'
-	})
-	YToggle = SpinBot:CreateToggle({
-		Name = 'Spin Y',
-		Default = true
-	})
-	ZToggle = SpinBot:CreateToggle({
-		Name = 'Spin Z'
-	})
-	
-end)
-
-local AutoPlay
-local Delay
-local Team
-
-run(function()
-	local playerGui = lplr:WaitForChild('PlayerGui')
-	local mainGui = playerGui and playerGui:WaitForChild('MainGui', 30)
-	local menu = mainGui and mainGui:WaitForChild('Menu', 30)
-	local gameplay = mainGui and mainGui:WaitForChild('Gameplay', 30)
-	local middle = gameplay and gameplay:WaitForChild('Middle', 30)
-
-	-- the home screen is MainGui.Menu and it is hidden while a match runs, so its visibility is
-	-- the queue signal. PressedPlay takes no argument, SelectTeam takes the team name as a plain
-	-- string ('Terrorists' / 'Counter-Terrorists'), both straight from the real buttons.
-	local teamSelection = middle and middle:WaitForChild('TeamSelection', 30)
-	local lastPress, lastTeam = 0, 0
-
-	local function pressPlay()
-		if not (menu and menu.Visible) then return end
-		if os.clock() - lastPress < Delay.Value then return end
-
-		lastPress = os.clock()
-		bloxstrike.send('Player', 'PressedPlay')
-	end
-
-	local function selectTeam()
-		if Team.Value == 'Auto' then return end
-		if not (teamSelection and teamSelection.Visible) then return end
-		if os.clock() - lastTeam < 5 then return end
-		if lplr:GetAttribute('Team') == Team.Value then return end
-
-		lastTeam = os.clock()
-		bloxstrike.send('TeamSelection', 'SelectTeam', Team.Value)
-	end
-
-	AutoPlay = vape.Categories.Utility:CreateModule({
-		Name = 'AutoPlay',
-		Function = function(callback)
-			if not callback then return end
-
-			repeat
-				pressPlay()
-				selectTeam()
-				task.wait(0.5)
-			until not AutoPlay.Enabled or vape.Loaded == nil
-		end,
-		Tooltip = 'Presses Play in the lobby and queues the next match for you'
-	})
-	Delay = AutoPlay:CreateSlider({
-		Name = 'Delay',
-		Min = 1,
-		Max = 30,
-		Default = 3,
-		Suffix = function(val)
-			return val == 1 and 'second' or 'seconds'
-		end
-	})
-	Team = AutoPlay:CreateDropdown({
-		Name = 'Team',
-		List = {'Auto', 'Terrorists', 'Counter-Terrorists'},
-		Tooltip = 'Only applied while the team selection screen is up, Auto leaves the pick to the game'
 	})
 end)
