@@ -3365,6 +3365,15 @@ run(function()
 		end
 	end
 	
+	local function handleFling()
+		if not options.Fling.Enabled then return end
+	
+		local flingExploit = vape.Modules.FlingExploit
+		if flingExploit and not flingExploit.Enabled then
+			flingExploit:Toggle()
+		end
+	end
+	
 	local function handleUndance()
 		if danceTrack then
 			danceTrack:Stop()
@@ -3516,6 +3525,7 @@ run(function()
 		end},
 		{Name = 'Rejoin', Tooltip = '.rj\n.rejoin'},
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
+		{Name = 'Fling', Tooltip = '.fling'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
 		{Name = 'ChangeTeam', Tooltip = '.team <name>'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
@@ -3551,6 +3561,7 @@ run(function()
 		team = handleTeam,
 		hop = handleHop,
 		rj = handleRejoin,
+		fling = handleFling,
 		reload = handleReload,
 		dance = handleDance,
 		undance = handleUndance
