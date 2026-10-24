@@ -131,7 +131,11 @@ local function safeUnhook(target, original)
 	end
 end
 
-local OriginScanner = {Cache = {}}
+-- SafeDistance is how far a shot origin can be moved and still be accepted as a real shot; past
+-- it the game drops the bullet as invalid, which is what the hardcoded 7.5 used to be. MaxDistance
+-- is how far a wallbang may still reach, driven by the SilentAim 'Distance' slider: inside it the
+-- hit is reported instead of firing a shot that cannot land
+local OriginScanner = {Cache = {}, MaxDistance = 25, SafeDistance = 7.5}
 run(function()
 	local rayParams = RaycastParams.new()
 	local overlapParams = OverlapParams.new()
@@ -179,9 +183,12 @@ run(function()
 		-- an exposed part is one the scan can actually aim at; a part buried in geometry has no
 		-- hitbox to shoot and is only handled by the fallback below
 		local exposed = checkPoint(target, overlapParams)
+		-- the wall face the blocking ray stopped on is always visible from the part itself, so it
+		-- only has to be close enough to pass as a real origin; shift is how far that hop is
+		local shift = extra and (origin - extra).Magnitude or math.huge
 		local hitboxPositions = {}
 		if exposed then
-			if extra and (origin - extra).Magnitude < 7.5 then
+			if shift <= self.SafeDistance then
 				self.Cache[part] = {extra}
 				return extra
 			end
@@ -225,14 +232,18 @@ run(function()
 			end
 		end
 
-		-- the target is standing inside geometry (noclip, clipped into the floor, hugging a
-		-- ceiling): no bullet can reach the part from any origin on this side, so the last
-		-- wallbang left is a fabricated hit on the aimed part. range, team and vulnerability
-		-- already ran before the scan, so this cannot reach past the configured range
-		if not exposed then
-			self.Cache[part] = {origin, target, true}
-			return origin, target, true
+		-- nothing on this side reaches the part without the game throwing the shot away as an
+		-- invalid bullet, so the hit is reported instead: it still goes through the normal damage
+		-- path while a moved origin past SafeDistance lands for nothing. a part buried in geometry
+		-- always qualifies; a part merely behind a wall only inside the distance slider's reach,
+		-- beyond that the target is left alone. range, team and vulnerability already ran before
+		-- the scan, so neither case reaches past the configured range
+		if exposed and shift > self.MaxDistance then
+			return
 		end
+
+		self.Cache[part] = {origin, target, true}
+		return origin, target, true
 	end
 
 	function OriginScanner:UpdateIgnore()
@@ -888,6 +899,7 @@ run(function()
 	local AutoFireTaser
 	local AutoFireSwitch
 	local Wallbang
+	local WallbangDistance
 	local CircleColor
 	local CircleTransparency
 	local CircleFilled
@@ -1221,7 +1233,24 @@ run(function()
 	})
 	Wallbang = SilentAim:CreateToggle({
 		Name = 'Wallbang',
-		Tooltip = 'Allow you to shoot people through walls when specific conditions are met.\n(If the entity has a valid hitbox position exposed, if the shoot position can be moved past walls (eg hugging walls) or if the target is stuck inside geometry)'
+		Function = function(callback)
+			WallbangDistance.Object.Visible = callback
+		end,
+		Tooltip = 'Allow you to shoot people through walls when specific conditions are met.\n(If the entity has a valid hitbox position exposed, if the shoot position can be moved past walls, or if the target is stuck inside geometry)\nA wall too far for the shot position to move is reported as a hit instead of being fired as an invalid bullet.'
+	})
+	WallbangDistance = SilentAim:CreateSlider({
+		Name = 'Distance',
+		Min = 5,
+		Max = 100,
+		Default = 25,
+		Function = function(val)
+			OriginScanner.MaxDistance = val
+		end,
+		Suffix = function(val)
+			return val == 1 and 'stud' or 'studs'
+		end,
+		Darker = true,
+		Visible = false
 	})
 	SilentAim:CreateToggle({
 		Name = 'Range Circle',
