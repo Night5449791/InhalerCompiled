@@ -134,8 +134,8 @@ end
 -- SafeDistance is how far a shot origin can be moved and still be accepted as a real shot; past
 -- it the game drops the bullet as invalid, which is what the hardcoded 7.5 used to be. HBE is set
 -- by the SilentAim 'Use HBE' toggle: only then does the scan report a part behind an unreachable
--- wall, and MaxDistance is how far away that wall may still be
-local OriginScanner = {Cache = {}, MaxDistance = 25, SafeDistance = 7.5, HBE = false}
+-- wall, and HBE fires from the true origin so that wall does not have to be close
+local OriginScanner = {Cache = {}, SafeDistance = 7.5, HBE = false}
 run(function()
 	local rayParams = RaycastParams.new()
 	local overlapParams = OverlapParams.new()
@@ -240,9 +240,10 @@ run(function()
 		end
 
 		-- a part behind a wall the origin cannot reach is only worth reporting when HBE is going to
-		-- fire through it. without HBE this stays the old behaviour: the target is skipped instead
-		-- of being hit through a wall the shot cannot cross
-		if self.HBE and shift <= self.MaxDistance then
+		-- fire through it. HBE keeps the shot itself valid by expanding the part instead of moving
+		-- the origin, so the wall can be as far as the aim range allows. without HBE this stays the
+		-- old behaviour: the target is skipped instead of being hit through a wall
+		if self.HBE then
 			self.Cache[part] = {origin, target, true}
 			return origin, target, true
 		end
@@ -901,7 +902,6 @@ run(function()
 	local AutoFireTaser
 	local AutoFireSwitch
 	local Wallbang
-	local WallbangDistance
 	local UseHBE
 	local CircleColor
 	local CircleTransparency
@@ -1052,7 +1052,28 @@ run(function()
 		return probeParams
 	end
 
+	local expandingHitbox = false
+
+	-- an instance handed back by a RaycastResult does not compare equal to the same instance held
+	-- in a table (the executor wraps them separately: == and rawequal both fail while the full name
+	-- matches), so every identity check here goes through the name
+	local function samePart(a, b)
+		if a == b then
+			return true
+		end
+
+		return a ~= nil and b ~= nil and a:GetFullName() == b:GetFullName()
+	end
+
 	local function expandAndFire(origin, part, rest)
+		-- a stacked Bullet hook makes old() another copy of this hook, which would stretch the same
+		-- part again and pull the box away from the origin until nothing is left. the inner call
+		-- just fires at the part as it already is, and the box sits on the line to the origin
+		if expandingHitbox then
+			local success, hitPart, hitPosition = pcall(old, origin, part.Position, table.unpack(rest, 1, rest.n))
+			return success and table.pack(hitPart, hitPosition) or nil
+		end
+
 		local center = part.Position
 		local delta = origin - center
 		local distance = delta.Magnitude
@@ -1069,20 +1090,23 @@ run(function()
 		part.CFrame = CFrame.lookAt(center + delta.Unit * (span / 2), origin)
 
 		local probe = workspace:Raycast(origin, (center - origin), getProbeParams())
-		if not probe or probe.Instance ~= part then
+		if not probe or not samePart(probe.Instance, part) then
 			part.Size, part.CFrame = originalSize, originalCFrame
 			return
 		end
 
-		local results = table.pack(old(origin, center, table.unpack(rest, 1, rest.n)))
+		expandingHitbox = true
+		local success, hitPart, hitPosition = pcall(old, origin, center, table.unpack(rest, 1, rest.n))
+		expandingHitbox = false
 		part.Size, part.CFrame = originalSize, originalCFrame
 
-		-- the bullet carries spread, so a probe hit does not promise the shot landed on the part
-		if results[1] ~= part then
+		-- a stacked hook answers with a fabricated hit and the bullet carries spread, so neither
+		-- outcome proves the shot landed on the part
+		if not success or not samePart(hitPart, part) then
 			return
 		end
 
-		return results
+		return table.pack(hitPart, hitPosition)
 	end
 
 	local function Hook(origin, direction, ...)
@@ -1303,7 +1327,6 @@ run(function()
 		Name = 'Wallbang',
 		Function = function(callback)
 			UseHBE.Object.Visible = callback
-			WallbangDistance.Object.Visible = callback and UseHBE.Enabled
 		end,
 		Tooltip = 'Allow you to shoot people through walls when specific conditions are met.\n(If the entity has a valid hitbox position exposed, if the shoot position can be moved past walls (eg hugging walls) or if the target is stuck inside geometry)'
 	})
@@ -1311,23 +1334,8 @@ run(function()
 		Name = 'Use HBE',
 		Function = function(callback)
 			OriginScanner.HBE = callback
-			WallbangDistance.Object.Visible = callback and Wallbang.Enabled
 		end,
 		Tooltip = 'Stretch the aimed hitbox towards you so the real bullet reaches a target behind a wall the shot position cannot cross.\nSlower, but the shot stays valid and the damage lands.',
-		Darker = true,
-		Visible = false
-	})
-	WallbangDistance = SilentAim:CreateSlider({
-		Name = 'Distance',
-		Min = 5,
-		Max = 100,
-		Default = 25,
-		Function = function(val)
-			OriginScanner.MaxDistance = val
-		end,
-		Suffix = function(val)
-			return val == 1 and 'stud' or 'studs'
-		end,
 		Darker = true,
 		Visible = false
 	})
