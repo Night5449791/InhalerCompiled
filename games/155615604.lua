@@ -859,7 +859,7 @@ task.spawn(function()
 	end
 end)
 
-for _, v in {'Reach', 'Jesus', 'MurderMystery', 'StaffDetector', 'FullBright', 'Health', 'GamingChair'} do
+for _, v in {'Reach', 'Jesus', 'MurderMystery', 'StaffDetector', 'FullBright', 'Health'} do
 	vape:Remove(v)
 end
 
@@ -2403,10 +2403,29 @@ run(function()
 	local FillTransparency
 	local OutlineTransparency
 	local Reference = {}
+	local lastFill, lastOutline
 	local Folder = Instance.new('Folder')
 	Folder.Parent = vape.holder
 	
+	local function Removed(c4)
+		local cham = Reference[c4]
+		if not cham then
+			return
+		end
+	
+		if vape.ThreadFix then
+			setthreadidentity(8)
+		end
+	
+		cham:Destroy()
+		Reference[c4] = nil
+	end
+	
 	local function Added(c4)
+		if Reference[c4] then
+			return
+		end
+	
 		local cham = Instance.new('Highlight')
 		cham.Adornee = c4
 		cham.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -2417,17 +2436,13 @@ run(function()
 		cham.Parent = Folder
 	
 		Reference[c4] = cham
-	end
 	
-	local function Removed(c4)
-		if Reference[c4] then
-			if vape.ThreadFix then
-				setthreadidentity(8)
-			end
-	
-			Reference[c4]:Destroy()
-			Reference[c4] = nil
-		end
+		-- the model gets destroyed when the c4 blows up but keeps its tag, so the removed
+		-- signal alone would leave the highlight and its reference behind for the rest of
+		-- the session
+		c4.Destroying:Connect(function()
+			Removed(c4)
+		end)
 	end
 	
 	C4ESP = vape.Categories.Render:CreateModule({
@@ -2438,12 +2453,13 @@ run(function()
 				C4ESP:Clean(collectionService:GetInstanceRemovedSignal('C4'):Connect(Removed))
 	
 				for _, c4 in collectionService:GetTagged('C4') do
-					task.spawn(Added, c4)
+					Added(c4)
 				end
 			else
 				for _, cham in Reference do
 					cham:Destroy()
 				end
+	
 				table.clear(Reference)
 			end
 		end,
@@ -2452,8 +2468,15 @@ run(function()
 	FillColor = C4ESP:CreateColorSlider({
 		Name = 'Color',
 		Function = function(hue, sat, val)
+			local color = Color3.fromHSV(hue, sat, val)
+			if color == lastFill then
+				return
+			end
+	
+			lastFill = color
+	
 			for _, cham in Reference do
-				cham.FillColor = Color3.fromHSV(hue, sat, val)
+				cham.FillColor = color
 			end
 		end
 	})
@@ -2461,8 +2484,15 @@ run(function()
 		Name = 'Outline Color',
 		DefaultSat = 0,
 		Function = function(hue, sat, val)
+			local color = Color3.fromHSV(hue, sat, val)
+			if color == lastOutline then
+				return
+			end
+	
+			lastOutline = color
+	
 			for _, cham in Reference do
-				cham.OutlineColor = Color3.fromHSV(hue, sat, val)
+				cham.OutlineColor = color
 			end
 		end
 	})
@@ -2490,6 +2520,7 @@ run(function()
 		end,
 		Decimal = 10
 	})
+	
 end)
 
 run(function()
@@ -5215,6 +5246,29 @@ run(function()
 	local Fade
 	local DrawingToggle
 	local drawingobjs = {}
+	local drawingpool = {}
+	local POOL_LIMIT = 64
+	
+	local function acquireLine()
+		local line = table.remove(drawingpool)
+		if line then
+			return line
+		end
+	
+		line = Drawing.new('Line')
+		line.Thickness = 2
+		return line
+	end
+	
+	local function releaseLine(line)
+		line.Visible = false
+	
+		if #drawingpool < POOL_LIMIT then
+			table.insert(drawingpool, line)
+		else
+			line:Remove()
+		end
+	end
 	
 	BulletTracers = vape.Legit:CreateModule({
 		Name = 'BulletTracers',
@@ -5222,39 +5276,56 @@ run(function()
 			if callback then
 				TracerHook:Add('BulletTracers', function(...)
 					local origin, dir = ...
-					if vtool then
-						origin = vtool.Muzzle.Position
+					local muzzle = vtool and vtool:FindFirstChild('Muzzle')
+					if muzzle then
+						origin = muzzle.Position
 					end
 	
 					local velocity = CFrame.lookAt(origin, dir).LookVector * 1000
+					local color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+					local endPoint = origin + velocity
+	
 					if DrawingToggle.Enabled then
-						local obj = Drawing.new('Line')
-						obj.Thickness = 2
-						obj.Color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
-						drawingobjs[obj] = {origin, origin + velocity, os.clock()}
+						local line = acquireLine()
+						local from, visibleFrom = gameCamera:WorldToViewportPoint(origin)
+						local to, visibleTo = gameCamera:WorldToViewportPoint(endPoint)
+	
+						line.Color = color
+						line.Transparency = 1 - Color.Opacity
+						line.From = Vector2.new(from.X, from.Y)
+						line.To = Vector2.new(to.X, to.Y)
+						line.Visible = visibleFrom and visibleTo
+						drawingobjs[line] = {origin, endPoint, os.clock()}
+	
 						task.delay(Lifetime.Value, function()
-							drawingobjs[obj] = nil
-							obj.Visible = false
-							obj:Remove()
+							if not drawingobjs[line] then
+								return
+							end
+	
+							drawingobjs[line] = nil
+							releaseLine(line)
 						end)
 					else
 						local obj = Instance.new('Part')
 						obj.Size = Vector3.new(0.1, 0.1, velocity.Magnitude)
-						obj.CFrame = CFrame.lookAt(origin + (velocity / 2), origin + velocity)
+						obj.CFrame = CFrame.lookAt(origin + (velocity / 2), endPoint)
 						obj.CanCollide = false
 						obj.CanQuery = false
 						obj.Anchored = true
 						obj.Material = Enum.Material[Material.Value]
-						obj.Color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+						obj.Color = color
 						obj.Transparency = 1 - Color.Opacity
 						obj.Parent = workspace
+	
 						if Fade.Enabled then
 							local tween = tweenService:Create(obj, TweenInfo.new(Lifetime.Value), {
 								Transparency = 1
 							})
+	
 							tween.Completed:Connect(function()
 								tween:Destroy()
 							end)
+	
 							tween:Play()
 						end
 	
@@ -5268,19 +5339,24 @@ run(function()
 					BulletTracers:Clean(runService.RenderStepped:Connect(function()
 						local clock = os.clock()
 						local lifetime = Lifetime.Value
+						local opacity = Color.Opacity
+						local fade = Fade.Enabled
 	
-						for obj, data in drawingobjs do
-							local from, vis = gameCamera:WorldToViewportPoint(data[1])
-							local to, vis2 = gameCamera:WorldToViewportPoint(data[2])
-							if vis and vis2 then
-								obj.Visible = true
-								obj.From = Vector2.new(from.X, from.Y)
-								obj.To = Vector2.new(to.X, to.Y)
-								if Fade.Enabled then
-									obj.Transparency = Color.Opacity * (1 - math.clamp((clock - data[3]) / lifetime, 0, 1))
+						for line, data in drawingobjs do
+							local from, visibleFrom = gameCamera:WorldToViewportPoint(data[1])
+							local to, visibleTo = gameCamera:WorldToViewportPoint(data[2])
+	
+							if visibleFrom and visibleTo then
+								line.From = Vector2.new(from.X, from.Y)
+								line.To = Vector2.new(to.X, to.Y)
+								line.Visible = true
+	
+								if fade then
+									local progress = lifetime > 0 and math.clamp((clock - data[3]) / lifetime, 0, 1) or 1
+									line.Transparency = 1 - opacity * (1 - progress)
 								end
 							else
-								obj.Visible = false
+								line.Visible = false
 							end
 						end
 					end))
@@ -5325,20 +5401,54 @@ run(function()
 			end
 		end
 	})
+	
 end)
 
 run(function()
 	local Crosshair
 	local Image
-	local old
+	local original
+	
+	local DEFAULT_IMAGE = 'rbxassetid://98794608762931'
+	
+	local function resolveImage(value)
+		if not value or value == '' then
+			return ''
+		end
+	
+		if value:find('rbxasset', 1, true) then
+			return value
+		end
+	
+		return isfile(value) and getcustomasset(value) or ''
+	end
+	
+	local function setImage(image)
+		local equip = oldequip or pl.Equip
+		if equip then
+			debug.setconstant(equip, 30, image)
+		end
+	end
+	
+	local function getImage()
+		local equip = oldequip or pl.Equip
+		if equip and debug.getconstant then
+			local success, value = pcall(debug.getconstant, equip, 30)
+			if success and type(value) == 'string' then
+				return value
+			end
+		end
+	end
 	
 	Crosshair = vape.Legit:CreateModule({
 		Name = 'Crosshair',
 		Function = function(callback)
 			if callback then
-				debug.setconstant(oldequip or pl.Equip, 30, Image.Value:find('rbxasset') and Image.Value or isfile(Image.Value) and getcustomasset(Image.Value) or '')
+				original = original or getImage()
+	
+				setImage(resolveImage(Image.Value))
 			else
-				debug.setconstant(oldequip or pl.Equip, 30, 'rbxassetid://98794608762931')
+				setImage(original or DEFAULT_IMAGE)
 			end
 		end,
 		Tooltip = 'Change the crosshair icon'
@@ -5348,45 +5458,63 @@ run(function()
 		Placeholder = 'assetid',
 		Function = function()
 			if Crosshair.Enabled then
-				debug.setconstant(oldequip or pl.Equip, 30, Image.Value:find('rbxasset') and Image.Value or isfile(Image.Value) and getcustomasset(Image.Value) or '')
+				setImage(resolveImage(Image.Value))
 			end
 		end
 	})
+	
 end)
 
 run(function()
 	local DamageIndicator
 	local FontOption
 	local ColorV
-	local Size
 	local tentity, lentity
 	local thealth, ttimer = 0, 0
 	local indi, indipart, indithread
 	
-	-- completely skidded from RIVALS
 	local function renderStepForLoop(startVal, endVal, increment, callback)
 		while true do
-			if endVal >= startVal then
-				if callback(startVal) then
-					return
-				else
-					local diff = tick()
-					runService.RenderStepped:Wait()
-					startVal = startVal + increment * (tick() - diff) * 60
-				end
-			else
+			if startVal >= endVal then
 				callback(endVal)
 				return
 			end
+	
+			if callback(startVal) then
+				return
+			end
+	
+			-- RenderStepped:Wait() returns the frame delta, so the step stays time based
+			startVal += increment * runService.RenderStepped:Wait() * 60
 		end
 	end
 	
-	local function createIndicator(damage, pos)
+	local function clearIndicator()
 		if indithread then
 			task.cancel(indithread)
-			indi.Text = math.ceil(tonumber(indi.Text) + damage)
+			indithread = nil
+		end
+	
+		if indipart then
+			indipart:Destroy()
+			indipart = nil
+		end
+	
+		indi = nil
+	end
+	
+	local function createIndicator(damage, pos)
+		if indi and indipart then
+			if indithread then
+				task.cancel(indithread)
+				indithread = nil
+			end
+	
+			indi.Text = math.ceil((tonumber(indi.Text) or 0) + damage)
 			indipart.Position = pos
 		else
+			clearIndicator()
+	
 			indipart = Instance.new('Part')
 			indipart.Size = Vector3.zero
 			indipart.Position = pos
@@ -5394,11 +5522,13 @@ run(function()
 			indipart.CanQuery = false
 			indipart.Anchored = true
 			indipart.Parent = workspace
+	
 			local billboard = Instance.new('BillboardGui')
 			billboard.Adornee = indipart
 			billboard.Size = UDim2.new(15, 250, 15, 250)
 			billboard.AlwaysOnTop = true
 			billboard.Parent = indipart
+	
 			indi = Instance.new('TextLabel')
 			indi.BackgroundTransparency = 1
 			indi.TextStrokeTransparency = 0
@@ -5412,26 +5542,22 @@ run(function()
 			indi.Parent = billboard
 		end
 	
-		if indithread then
-			task.cancel(indithread)
-			indithread = nil
-		end
-	
 		-- completely skidded from RIVALS
 		indithread = task.spawn(function()
-			local sign = math.sign(math.random() - 0.5)
+			local sign = math.random() < 0.5 and -1 or 1
 			renderStepForLoop(0, 100, 3, function(value)
 				local percent = value / 100
 				local val0 = tweenService:GetValue(percent, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
 				local val1 = tweenService:GetValue(percent, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 				local scale = 1 - 0.5 * val1
 				indi.Position = UDim2.new(0.5 + 0.125 * val0 * sign, 0, 0.5 + 0.125 * val1, 0)
-				indi.Size = UDim2.new(1 * scale, 0, 0.075 * scale * (v197 and 1 or 0.75), 0)
+				indi.Size = UDim2.new(scale, 0, 0.075 * scale * 0.75, 0)
 				indi.Rotation = percent ^ 4 * 260 * sign
 			end)
 	
 			indipart:Destroy()
 			indipart = nil
+			indi = nil
 			indithread = nil
 		end)
 	end
@@ -5440,41 +5566,52 @@ run(function()
 		Name = 'DamageIndicator',
 		Function = function(callback)
 			if callback then
-				TracerHook:Add('DamageIndicator', function(...)
+				TracerHook:Add('DamageIndicator', function()
 					local part = debug.getstack(4, 13)
-					if typeof(part) == 'Instance' then
-						for _, v in entitylib.List do
-							if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
-								if ttimer <= os.clock() or v ~= tentity then
-									thealth = v.Health
-								end
+					if typeof(part) ~= 'Instance' then
+						return
+					end
 	
-								tentity = v
-								ttimer = os.clock() + 0.5
-								break
+					local clock = os.clock()
+	
+					for _, v in entitylib.List do
+						if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
+							if ttimer <= clock or v ~= tentity then
+								thealth = v.Health
 							end
+	
+							tentity = v
+							ttimer = clock + 0.5
+							break
 						end
 					end
 				end)
 	
 				DamageIndicator:Clean(entitylib.Events.EntityUpdated:Connect(function(entity)
-					if entity == tentity and ttimer > os.clock() then
-						if entity ~= lentity then
-							if indi then
-								indi.Text = '0'
-							end
+					if entity ~= tentity or ttimer <= os.clock() then
+						return
+					end
 	
-							lentity = entity
+					if entity ~= lentity then
+						if indi then
+							indi.Text = '0'
 						end
 	
-						if thealth > entity.Health then
-							createIndicator(thealth - entity.Health, entity.Head.Position + Vector3.new(0, 2, 0))
-							thealth = entity.Health
-						end
+						lentity = entity
+					end
+	
+					local head = entity.Head
+					if head and thealth > entity.Health then
+						createIndicator(thealth - entity.Health, head.Position + Vector3.new(0, 2, 0))
+						thealth = entity.Health
 					end
 				end))
 			else
 				TracerHook:Remove('DamageIndicator')
+				clearIndicator()
+	
+				tentity, lentity = nil, nil
+				thealth, ttimer = 0, 0
 			end
 		end,
 		Tooltip = 'Add custom damage indicators for gun damage.'
@@ -5499,45 +5636,50 @@ run(function()
 		DefaultHue = 0,
 		Function = function(hue, sat, val)
 			if indi then
-				indi.Color = Color3.fromHSV(hue, sat, val)
+				indi.TextColor3 = Color3.fromHSV(hue, sat, val)
 			end
 		end
 	})
+	
 end)
 
 run(function()
 	local HitSound
-	local Value
 	local Volume
 	local PitchShift
-	local old, sounds = nil, {}
+	local sounds = {}
 	
 	HitSound = vape.Legit:CreateModule({
 		Name = 'HitSound',
 		Function = function(callback)
 			if callback then
 				local played
-				TracerHook:Add('HitSound', function(...)
+	
+				TracerHook:Add('HitSound', function()
+					if played or #sounds == 0 then
+						return
+					end
+	
 					local part = debug.getstack(4, 13)
-					if typeof(part) == 'Instance' then
-						for _, v in entitylib.List do
-							if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
-								if #sounds > 0 and not played then
-									local sound = Instance.new('Sound')
-									sound.SoundId = sounds[math.random(1, #sounds)]
-									sound.PlayOnRemove = true
-									sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
-									sound.Volume = Volume.Value
-									sound.Parent = workspace
-									sound:Destroy()
+					if typeof(part) ~= 'Instance' then
+						return
+					end
 	
-									played = task.defer(function()
-										played = nil
-									end)
-								end
+					for _, v in entitylib.List do
+						if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
+							local sound = Instance.new('Sound')
+							sound.SoundId = sounds[math.random(#sounds)]
+							sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
+							sound.Volume = Volume.Value
+							sound.PlayOnRemove = true
+							sound.Parent = workspace
+							sound:Destroy()
 	
-								break
-							end
+							played = task.defer(function()
+								played = nil
+							end)
+	
+							break
 						end
 					end
 				end)
@@ -5547,13 +5689,25 @@ run(function()
 		end,
 		Tooltip = 'Custom hit sound'
 	})
-	Value = HitSound:CreateTextList({
+	HitSound:CreateTextList({
 		Name = 'Sounds',
 		Placeholder = 'sound id (roblox or file path)',
 		Function = function(list)
 			table.clear(sounds)
-			for index, sound in list or {} do
-				sounds[index] = sound:find('rbxasset') and sound or isfile(sound) and getcustomasset(sound) or nil
+	
+			for _, sound in list or {} do
+				local asset
+	
+				if sound:find('rbxasset', 1, true) then
+					asset = sound
+				elseif isfile(sound) then
+					local success, path = pcall(getcustomasset, sound)
+					asset = success and path or nil
+				end
+	
+				if asset then
+					table.insert(sounds, asset)
+				end
 			end
 		end
 	})
@@ -5567,41 +5721,55 @@ run(function()
 	PitchShift = HitSound:CreateToggle({
 		Name = 'Pitch Shift'
 	})
+	
 end)
 
 run(function()
 	local KillSound
-	local Value
 	local Volume
 	local PitchShift
-	local old, sounds = nil, {}
+	local sounds = {}
 	
 	KillSound = vape.Legit:CreateModule({
 		Name = 'KillSound',
 		Function = function(callback)
 			if callback then
 				KillSound:Clean(vapeEvents.PlayerKill.Event:Connect(function(plr)
-					if plr == lplr.Name and #sounds > 0 then
-						local sound = Instance.new('Sound')
-						sound.SoundId = sounds[math.random(1, #sounds)]
-						sound.PlayOnRemove = true
-						sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
-						sound.Volume = Volume.Value
-						sound.Parent = workspace
-						sound:Destroy()
+					if plr ~= lplr.Name or #sounds == 0 then
+						return
 					end
+	
+					local sound = Instance.new('Sound')
+					sound.SoundId = sounds[math.random(#sounds)]
+					sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
+					sound.Volume = Volume.Value
+					sound.PlayOnRemove = true
+					sound.Parent = workspace
+					sound:Destroy()
 				end))
 			end
 		end,
 		Tooltip = 'Custom kill sound'
 	})
-	Value = KillSound:CreateTextList({
+	KillSound:CreateTextList({
 		Name = 'Sounds',
 		Placeholder = 'sound id (roblox or file path)',
 		Function = function(list)
 			table.clear(sounds)
-			for index, sound in list or {} do
-				sounds[index] = sound:find('rbxasset') and sound or isfile(sound) and getcustomasset(sound) or nil
+	
+			for _, sound in list or {} do
+				local asset
+	
+				if sound:find('rbxasset', 1, true) then
+					asset = sound
+				elseif isfile(sound) then
+					local success, path = pcall(getcustomasset, sound)
+					asset = success and path or nil
+				end
+	
+				if asset then
+					table.insert(sounds, asset)
+				end
 			end
 		end
 	})
@@ -5615,6 +5783,7 @@ run(function()
 	PitchShift = KillSound:CreateToggle({
 		Name = 'Pitch Shift'
 	})
+	
 end)
 
 run(function()
@@ -5627,68 +5796,115 @@ run(function()
 	local ColorSl
 	local handle
 	local old
+	local toolAddedConn, toolRemovedConn
 	local moveSpring = Spring.new()
 	local aimSpring = Spring.new({Speed = 15})
 	
-	local function ToolAdded(tool)
-		if tool and tool:IsA('Tool') then
-			if old then
-				for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
-					inst.LocalTransparencyModifier = 0
-				end
-			end
-	
-			if vtool then
-				vtool:Destroy()
-			end
-	
-			old = tool
-			vtool = tool:Clone()
-			handle = vtool:FindFirstChild('Handle')
-			vtool.Parent = gameCamera
-	
-			for _, part in vtool:QueryDescendants('BasePart') do
-				part.Material = ForceField.Enabled and Enum.Material.ForceField or part.Material
-				part.Color = ForceField.Enabled and Color3.fromHSV(ColorSl.Hue, ColorSl.Sat, ColorSl.Value) or part.Color
-			end
-	
-			for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
-				inst.LocalTransparencyModifier = 1
+	local function setTransparency(tool, transparency)
+		if tool then
+			for _, inst in tool:QueryDescendants('BasePart, Texture, Decal') do
+				inst.LocalTransparencyModifier = transparency
 			end
 		end
 	end
 	
-	local function EntityAdded(entity)
+	local function destroyViewmodel()
 		if vtool then
 			vtool:Destroy()
 			vtool = nil
-			handle = nil
 		end
 	
-		Viewmodel:Clean(entity.Character.ChildAdded:Connect(ToolAdded))
-		Viewmodel:Clean(entity.Character.ChildRemoved:Connect(function(tool)
-			if tool == old then
-				if vtool then
-					vtool:Destroy()
-					vtool = nil
-				end
+		handle = nil
+	end
 	
-				for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
-					inst.LocalTransparencyModifier = 0
-				end
+	local function ToolAdded(tool)
+		if not tool or not tool:IsA('Tool') then
+			return
+		end
 	
-				old = nil
+		setTransparency(old, 0)
+		destroyViewmodel()
+	
+		old = tool
+		vtool = tool:Clone()
+		handle = vtool:FindFirstChild('Handle')
+		vtool.Parent = gameCamera
+	
+		if ForceField.Enabled then
+			local color = Color3.fromHSV(ColorSl.Hue, ColorSl.Sat, ColorSl.Value)
+	
+			for _, part in vtool:QueryDescendants('BasePart') do
+				part.Material = Enum.Material.ForceField
+				part.Color = color
 			end
-		end))
+		end
 	
-		ToolAdded(entity.Character:FindFirstChildWhichIsA('Tool'))
+		setTransparency(old, 1)
+	end
+	
+	local function EntityAdded(entity)
+		destroyViewmodel()
+	
+		if toolAddedConn then
+			toolAddedConn:Disconnect()
+			toolRemovedConn:Disconnect()
+			toolAddedConn, toolRemovedConn = nil, nil
+		end
+	
+		setTransparency(old, 0)
+		old = nil
+	
+		local character = entity and entity.Character
+		if not character then
+			return
+		end
+	
+		toolAddedConn = character.ChildAdded:Connect(ToolAdded)
+		toolRemovedConn = character.ChildRemoved:Connect(function(tool)
+			if tool ~= old then
+				return
+			end
+	
+			destroyViewmodel()
+			setTransparency(old, 0)
+			old = nil
+		end)
+	
+		ToolAdded(character:FindFirstChildWhichIsA('Tool'))
+	end
+	
+	local function renderViewmodel(dt)
+		if not handle then
+			return
+		end
+	
+		local camCF = gameCamera.CFrame
+		local clock = os.clock()
+		local root = entitylib.isAlive and entitylib.character.RootPart
+		local target = root and root.AssemblyLinearVelocity * 0.005 or Vector3.zero
+	
+		if Sway.Enabled then
+			if target.Magnitude > 0.1 then
+				target += (camCF * CFrame.new(math.sin(clock * 10) * 0.06, 0, 0)).Position - camCF.Position
+			else
+				target += (camCF * CFrame.new(0, math.sin(clock) * 0.04, 0)).Position - camCF.Position
+			end
+		end
+	
+		moveSpring.Target = target
+	
+		local cf = (camCF * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
+		local recoil = math.max(shootTimer - clock, 0)
+		aimSpring.Target = aimTimer > clock and CFrame.lookAt(cf.Position, aimVec).LookVector or camCF.LookVector
+		handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(recoil * 10), 0, 0) * CFrame.new(0, 0, recoil))
+		handle.AssemblyLinearVelocity = Vector3.zero
 	end
 	
 	Viewmodel = vape.Legit:CreateModule({
 		Name = 'Viewmodel',
 		Function = function(callback)
 			if callback then
-				TracerHook:Add('Viewmodel', function(...)
+				TracerHook:Add('Viewmodel', function()
 					shootTimer = os.clock() + 0.3
 				end, 0)
 	
@@ -5697,46 +5913,19 @@ run(function()
 					task.spawn(EntityAdded, entitylib.character)
 				end
 	
-				Viewmodel:Clean(runService.RenderStepped:Connect(function(dt)
-					if handle then
-						local camCF = gameCamera.CFrame
-						local clock = os.clock()
-						local root = entitylib.isAlive and entitylib.character.RootPart
-						moveSpring.Target = root and root.AssemblyLinearVelocity * 0.005 or Vector3.zero
-	
-						if Sway.Enabled then
-							local swayTime = tick()
-	
-							if moveSpring.Target.Magnitude > 0.1 then
-								moveSpring.Target += (camCF * CFrame.new(math.sin(swayTime * 10) * 0.06, 0, 0)).Position - camCF.Position
-							else
-								moveSpring.Target += (camCF * CFrame.new(0, math.sin(swayTime) * 0.04, 0)).Position - camCF.Position
-							end
-						end
-	
-						local cf = (camCF * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
-						local recoil = math.max(shootTimer - clock, 0)
-						aimSpring.Target = aimTimer > clock and CFrame.lookAt(cf.Position, aimVec).LookVector or camCF.LookVector
-						handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(recoil * 10), 0, 0) * CFrame.new(0, 0, recoil))
-						handle.AssemblyLinearVelocity = Vector3.zero
-					end
-				end))
+				Viewmodel:Clean(runService.RenderStepped:Connect(renderViewmodel))
 			else
 				TracerHook:Remove('Viewmodel')
 	
-				if old then
-					for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
-						inst.LocalTransparencyModifier = 0
-					end
-	
-					old = nil
+				if toolAddedConn then
+					toolAddedConn:Disconnect()
+					toolRemovedConn:Disconnect()
+					toolAddedConn, toolRemovedConn = nil, nil
 				end
 	
-				if vtool then
-					vtool:Destroy()
-					vtool = nil
-					handle = nil
-				end
+				setTransparency(old, 0)
+				old = nil
+				destroyViewmodel()
 			end
 		end,
 		Tooltip = 'Custom viewmodel for guns'
@@ -5779,12 +5968,15 @@ run(function()
 	ColorSl = Viewmodel:CreateColorSlider({
 		Name = 'Color',
 		Function = function(hue, sat, val)
-			if vtool then
-				for _, part in vtool:QueryDescendants('BasePart') do
-					part.Color = Color3.fromHSV(hue, sat, val)
-				end
+			if not ForceField.Enabled or not vtool then
+				return
+			end
+	
+			for _, part in vtool:QueryDescendants('BasePart') do
+				part.Color = Color3.fromHSV(hue, sat, val)
 			end
 		end,
 		Visible = false
 	})
+	
 end)
