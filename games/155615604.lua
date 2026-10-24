@@ -132,10 +132,10 @@ local function safeUnhook(target, original)
 end
 
 -- SafeDistance is how far a shot origin can be moved and still be accepted as a real shot; past
--- it the game drops the bullet as invalid, which is what the hardcoded 7.5 used to be. MaxDistance
--- is how far a wallbang may still reach, driven by the SilentAim 'Distance' slider: inside it the
--- hit is reported instead of firing a shot that cannot land
-local OriginScanner = {Cache = {}, MaxDistance = 25, SafeDistance = 7.5}
+-- it the game drops the bullet as invalid, which is what the hardcoded 7.5 used to be. HBE is set
+-- by the SilentAim 'Use HBE' toggle: only then does the scan report a part behind an unreachable
+-- wall, and MaxDistance is how far away that wall may still be
+local OriginScanner = {Cache = {}, MaxDistance = 25, SafeDistance = 7.5, HBE = false}
 run(function()
 	local rayParams = RaycastParams.new()
 	local overlapParams = OverlapParams.new()
@@ -232,18 +232,20 @@ run(function()
 			end
 		end
 
-		-- nothing on this side reaches the part without the game throwing the shot away as an
-		-- invalid bullet, so the hit is reported instead: it still goes through the normal damage
-		-- path while a moved origin past SafeDistance lands for nothing. a part buried in geometry
-		-- always qualifies; a part merely behind a wall only inside the distance slider's reach,
-		-- beyond that the target is left alone. range, team and vulnerability already ran before
-		-- the scan, so neither case reaches past the configured range
-		if exposed and shift > self.MaxDistance then
-			return
+		-- a part buried in geometry has no hitbox to shoot: the hit is reported so the caller can
+		-- fire through an expanded part (HBE) or drop the shot, which is what this always did
+		if not exposed then
+			self.Cache[part] = {origin, target, true}
+			return origin, target, true
 		end
 
-		self.Cache[part] = {origin, target, true}
-		return origin, target, true
+		-- a part behind a wall the origin cannot reach is only worth reporting when HBE is going to
+		-- fire through it. without HBE this stays the old behaviour: the target is skipped instead
+		-- of being hit through a wall the shot cannot cross
+		if self.HBE and shift <= self.MaxDistance then
+			self.Cache[part] = {origin, target, true}
+			return origin, target, true
+		end
 	end
 
 	function OriginScanner:UpdateIgnore()
@@ -1269,10 +1271,20 @@ run(function()
 	Wallbang = SilentAim:CreateToggle({
 		Name = 'Wallbang',
 		Function = function(callback)
-			WallbangDistance.Object.Visible = callback
 			UseHBE.Object.Visible = callback
+			WallbangDistance.Object.Visible = callback and UseHBE.Enabled
 		end,
-		Tooltip = 'Allow you to shoot people through walls when specific conditions are met.\n(If the entity has a valid hitbox position exposed, if the shoot position can be moved past walls, or if the target is stuck inside geometry)\nA wall too far for the shot position to move is reported as a hit instead of being fired as an invalid bullet.'
+		Tooltip = 'Allow you to shoot people through walls when specific conditions are met.\n(If the entity has a valid hitbox position exposed, if the shoot position can be moved past walls (eg hugging walls) or if the target is stuck inside geometry)'
+	})
+	UseHBE = SilentAim:CreateToggle({
+		Name = 'Use HBE',
+		Function = function(callback)
+			OriginScanner.HBE = callback
+			WallbangDistance.Object.Visible = callback and Wallbang.Enabled
+		end,
+		Tooltip = 'Stretch the aimed hitbox towards you so the real bullet reaches a target behind a wall the shot position cannot cross.\nSlower, but the shot stays valid and the damage lands.',
+		Darker = true,
+		Visible = false
 	})
 	WallbangDistance = SilentAim:CreateSlider({
 		Name = 'Distance',
@@ -1285,12 +1297,6 @@ run(function()
 		Suffix = function(val)
 			return val == 1 and 'stud' or 'studs'
 		end,
-		Darker = true,
-		Visible = false
-	})
-	UseHBE = SilentAim:CreateToggle({
-		Name = 'Use HBE',
-		Tooltip = 'Stretch the aimed hitbox towards you so the real bullet reaches through the wall.\nSlower than faking the hit, but the shot stays valid and the damage lands.',
 		Darker = true,
 		Visible = false
 	})
