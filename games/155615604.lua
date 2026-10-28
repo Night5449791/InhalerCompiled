@@ -4499,7 +4499,6 @@ run(function()
 end)
 
 run(function()
-	if false then
 	local FlingExploit
 	local Mode
 	local List
@@ -4863,8 +4862,6 @@ run(function()
 		Tooltip = 'Automatically view the target being flung.'
 	})
 	vape:Clean(playersService.PlayerRemoving:Connect(clearPlayer))
-	end
-	
 end)
 
 run(function()
