@@ -3525,11 +3525,6 @@ run(function()
 				notif('ChatCommand', 'No player found.', 5, 'warning')
 				return
 			end
-	
-			if isFriend(player) or not select(2, whitelist:get(player)) then
-				notif('ChatCommand', player.DisplayName..' is protected.', 5, 'warning')
-				return
-			end
 		end
 	
 		local mode = player and 'Individual' or 'All'
@@ -4589,8 +4584,6 @@ run(function()
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
-	local CYAN = BrickColor.new('Cyan')
-	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
 	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
 	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
 	
@@ -4684,6 +4677,29 @@ run(function()
 		end
 	end
 	
+	local function nearestSpawner(position)
+		local best, bestDist
+		for _, spawner in getSpawners() do
+			local dist = (spawner.Position - position).Magnitude
+			if not bestDist or dist < bestDist then
+				best, bestDist = spawner, dist
+			end
+		end
+	
+		return best
+	end
+	
+	-- the cars are handed out at the spawner, so both modes park the character on it
+	local function goToSpawner()
+		local root = entitylib.character and entitylib.character.RootPart
+		local spawner = root and nearestSpawner(root.Position)
+		if not (root and spawner) then return end
+	
+		root.CFrame = CFrame.new(spawner.Position + Vector3.new(0, 6, 0))
+		root.AssemblyLinearVelocity = Vector3.zero
+		return spawner
+	end
+	
 	local function sortFling(a, b)
 		return (lastFling[a.Player.Name] or 0) < (lastFling[b.Player.Name] or 0)
 	end
@@ -4696,10 +4712,15 @@ run(function()
 		local individual = Mode.Value ~= 'All'
 		local enabled = List.ListEnabled
 		for _, entity in entitylib.List do
-			if isFriend(entity.Player) then continue end
-			if not select(2, whitelist:get(entity.Player)) then continue end
+			-- a name typed into the list is an explicit order, so it outranks the
+			-- friend and whitelist protection the automatic picks respect
+			local listed = table.find(enabled, entity.Player.Name) ~= nil
+			if not listed then
+				if isFriend(entity.Player) then continue end
+				if not select(2, whitelist:get(entity.Player)) then continue end
+			end
 			if entity.Player.Team == teams.Neutral then continue end
-			if individual and not table.find(enabled, entity.Player.Name) then continue end
+			if individual and not listed then continue end
 			local humanoid = entity.Humanoid
 			if humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored then continue end
 			if not entity.RootPart:IsDescendantOf(workspace) then continue end
@@ -4836,6 +4857,12 @@ run(function()
 	
 	-- same spawner call the regular mode makes, then the new model is picked up
 	local function spawnCar()
+		local spawner = goToSpawner()
+		if not spawner then return nil, 'no car spawner found' end
+	
+		task.wait(0.4)
+		goToSpawner()
+	
 		local container = workspace.CarContainer
 		local known = {}
 		for _, model in container:GetChildren() do
@@ -5064,7 +5091,6 @@ run(function()
 		Name = 'FlingExploit',
 		Function = function(callback)
 			if callback then
-				local dir = 0
 				local antiFling = vape.Modules.AntiFling
 	
 				if not antiFling.Enabled then
@@ -5072,7 +5098,6 @@ run(function()
 				end
 	
 				local teamTimer = 0
-				local targetTimer = 0
 				local viewing = false
 	
 				refreshSeats()
@@ -5151,38 +5176,18 @@ run(function()
 						return
 					end
 	
-					local root = entitylib.character.RootPart
-					local rootPos = root.Position
-					local didMove
+					-- movement keeps us parked on the spawner, that is where cars are handed out
+					if Movement.Enabled then
+						goToSpawner()
+					end
 	
 					requestCar(now)
 	
-					for _, spawner in getSpawners() do
-						local offset = spawner.Position - rootPos
-						local mag = offset.Magnitude
-	
-						if mag < 50 and spawner.BrickColor == CYAN and not didMove then
-							dir = math.clamp(dir + (math.clamp(offset.X, -1, 1) * dt * 24), -12, 14)
-							didMove = true
-						end
-					end
-	
-					if not didMove then
-						dir = math.clamp(dir + (math.clamp(-dir, -1, 1) * dt * 24), -12, 14)
-					end
-	
-					if Movement.Enabled then
-						root.CFrame = CFrame.new(610 + dir, 98, 2494)
-						root.AssemblyLinearVelocity = DRIVE_VELOCITY
-					end
-	
-					local owned, flung, flungHumanoid
+					local flung, flungHumanoid
 					setMaxSimRadius()
 	
 					for _, seat in seats do
 						if not isNetworkOwned(seat) then continue end
-	
-						owned = true
 	
 						local target = getTarget(seat, now)
 						if not target then continue end
@@ -5217,11 +5222,6 @@ run(function()
 					elseif viewing then
 						viewing = false
 						restoreCamera()
-					end
-	
-					if not flung and next(seats) and (now - targetTimer) > 5 then
-						targetTimer = now
-						notif('FlingExploit', owned and 'No flingable target found.' or 'Vehicle seat is not network owned.', 5, 'warning')
 					end
 				end))
 			else
