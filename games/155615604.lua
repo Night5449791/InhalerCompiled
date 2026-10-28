@@ -4499,6 +4499,7 @@ run(function()
 end)
 
 run(function()
+	if false then
 	local FlingExploit
 	local Mode
 	local List
@@ -4638,15 +4639,10 @@ run(function()
 	end
 	
 	-- the chunk env is not always the executor env, these live on the real global table
-	local function executorShim(name)
-		local env = getgenv and getgenv()
-		return (env and env[name]) or _G[name]
-	end
-	
 	local function setMaxSimRadius()
-		local sethidden = executorShim('sethiddenproperty')
-		local setsim = executorShim('setsimulationradius')
-		local setflag = executorShim('setfflag')
+		local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
+		local setsim = (getgenv and getgenv().setsimulationradius) or _G.setsimulationradius or setsimulationradius
+		local setflag = (getgenv and getgenv().setfflag) or _G.setfflag or setfflag
 	
 		if typeof(sethidden) == 'function' then
 			pcall(sethidden, lplr, 'SimulationRadius', 1e9)
@@ -4695,11 +4691,9 @@ run(function()
 		Function = function(callback)
 			if callback then
 				local dir = 0
-				-- the anti fling module lives in the same category, but it is looked up
-				-- the way the panel looks modules up: it may not be there yet
-				local antiFling = vape.Modules and vape.Modules.AntiFling
+				local antiFling = vape.Modules.AntiFling
 	
-				if antiFling and not antiFling.Enabled then
+				if not antiFling.Enabled then
 					antiFling:Toggle()
 				end
 	
@@ -4810,17 +4804,8 @@ run(function()
 						seat.AssemblyLinearVelocity = NORMAL_VELOCITY
 						seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
 						target.RootPart.AssemblyLinearVelocity = Vector3.zero
-	
-						-- the physics rep swap needs the executor globals. some executors
-						-- only expose them through getgenv, and a missing one must not take
-						-- the whole loop down: the fling still lands without the swap
-						local sethidden = executorShim('sethiddenproperty')
-						local instanceHandle = executorShim('InstanceHandle')
-	
-						if typeof(sethidden) == 'function' and typeof(instanceHandle) == 'table' and typeof(instanceHandle.new) == 'function' then
-							pcall(sethidden, seat, 'PhysicsRepRootPart', target.RootPart)
-							pcall(sethidden, seat, 'PhysicsRepRootRef', instanceHandle.new(target.RootPart))
-						end
+						sethiddenproperty(seat, 'PhysicsRepRootPart', target.RootPart)
+						sethiddenproperty(seat, 'PhysicsRepRootRef', InstanceHandle.new(target.RootPart))
 	
 						local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
 						if wheels then
@@ -4878,6 +4863,7 @@ run(function()
 		Tooltip = 'Automatically view the target being flung.'
 	})
 	vape:Clean(playersService.PlayerRemoving:Connect(clearPlayer))
+	end
 	
 end)
 
