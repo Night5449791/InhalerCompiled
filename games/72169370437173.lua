@@ -37,41 +37,58 @@ local tribes = {}
 local HitboxHook = {Hooks = {}}
 local VelocityTracker = {Entries = setmetatable({}, {__mode = 'k'})}
 local isMatch = false
+local isVolt = false--identifyexecutor and identifyexecutor() == 'Volt' and trampoline_call and true or false
 local clickQueue = {}
 local clickThread = nil
+
+local function canClickButton(target)
+	if (not target.Visible) and (not guiService.MenuIsOpen) then
+		return false
+	end
+
+	local pos = target.AbsolutePosition + target.AbsoluteSize / 2
+	if gethui and gethui():IsA('BasePlayerGui') then
+		for _, obj in gethui():GetGuiObjectsAtPosition(pos.X, pos.Y) do
+			if obj:IsA('GuiButton') then
+				return obj == target
+			end
+		end
+	end
+
+	for _, obj in coreGui:GetGuiObjectsAtPosition(pos.X, pos.Y) do
+		if obj:IsA('GuiButton') then
+			return obj == target
+		end
+	end
+
+	for _, obj in lplr.PlayerGui:GetGuiObjectsAtPosition(pos.X, pos.Y) do
+		if obj:IsA('GuiButton') then
+			return obj == target
+		end
+	end
+
+	return false
+end
 
 local function clickButton(obj)
 	if not (obj and obj:IsA('TextButton')) then
 		return
 	end
 
-	if true then return end
-
 	if not table.find(clickQueue, obj) then
 		table.insert(clickQueue, obj)
 
 		if not clickThread then
-			clickThread = task.spawn(function()
+			task.spawn(function()
+				clickThread = coroutine.running()
+
 				repeat
 					local i, button = next(clickQueue)
 					if i then
-						if button:IsDescendantOf(lplr.PlayerGui) then
-							local cPos = button.AbsolutePosition + guiService:GetGuiInset()
-							local gui = Instance.new('ScreenGui')
-							gui.IgnoreGuiInset = true
-							gui.DisplayOrder = 10000000
-							gui.Parent = vape.gui.Parent
-							local gbutton = Instance.new('TextButton')
-							gbutton.BackgroundTransparency = 1
-							gbutton.Size = UDim2.fromScale(1, 1)
-							gbutton.Text = ''
-							gbutton.Parent = gui
+						table.remove(clickQueue, i)
 
-							for _, event in {'MouseButton1Down', 'InputBegan', 'MouseButton1Up', 'Activated', 'MouseButton1Click', 'InputEnded'} do
-								gbutton[event]:Connect(function(...)
-									firesignal(button[event], ...)
-								end)
-							end
+						if canClickButton(button) then
+							local cPos = (button.AbsolutePosition + button.AbsoluteSize / 2) + guiService:GetGuiInset()
 
 							if inputService.TouchEnabled then
 								vim:SendTouchEvent(0, 0, cPos.X, cPos.Y)
@@ -81,18 +98,13 @@ local function clickButton(obj)
 								vim:SendMouseButtonEvent(cPos.X, cPos.Y, 0, false, gui, 0)
 							end
 
-							gbutton.Activated:Wait()
-							gui:Destroy()
 							task.wait(0.016)
 						end
-
-						table.remove(clickQueue, i)
 					else
+						clickThread = nil
 						break
 					end
 				until false
-
-				clickThread = nil
 			end)
 		end
 	end
@@ -274,10 +286,15 @@ run(function()
 	local oldhitbox
 
 	local function Hook(...)
-		if setstackhidden then
-			local a, b = debug.info(1, 'f'), debug.info(2, 'f')
-			setstackhidden(a, true)
-			setstackhidden(b, true)
+		if setstackhidden and (not isVolt) then -- volt automatically hides the stack with hookfunction
+			local ffunctions = {debug.info(1, 'f'), debug.info(2, 'f'), debug.info(3, 'f'), debug.info(4, 'f'), debug.info(5, 'f')}
+			for _, func in ffunctions do
+				if isexecutorclosure(func) then
+					setstackhidden(func, true)
+				end
+			end
+
+			table.clear(ffunctions)
 		end
 
 		local args = table.pack(...)
@@ -498,9 +515,16 @@ run(function()
 	end
 	
 	local function Hook(...)
-		local a, b = debug.info(1, 'f'), debug.info(2, 'f')
-		setstackhidden(a, true)
-		setstackhidden(b, true)
+		if setstackhidden and (not isVolt) then -- volt automatically hides the stack with hookfunction
+			local ffunctions = {debug.info(1, 'f'), debug.info(2, 'f'), debug.info(3, 'f'), debug.info(4, 'f'), debug.info(5, 'f')}
+			for _, func in ffunctions do
+				if isexecutorclosure(func) then
+					setstackhidden(func, true)
+				end
+			end
+	
+			table.clear(ffunctions)
+		end
 	
 		local handler
 		for _, obj in debug.getstack(3) do
@@ -754,6 +778,7 @@ run(function()
 	local ParticleColor2
 	local ParticleSize
 	local Particle, Box = nil, nil
+	local gamingThread
 	
 	SilentAura = vape.Categories.Combat:CreateModule({
 		Name = 'SilentAura',
@@ -762,107 +787,114 @@ run(function()
 				local old, didSwing
 	
 				SilentAura:Clean(runService.PostSimulation:Connect(function()
-					local attacked
+					gamingThread = task.defer(function()
+						local attacked
 	
-					if entitylib.isAlive and tribes.State.handler and tribes.State.handler.lastSwing then
-						local localPos = entitylib.character.RootPart.Position
-						local localFacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
-						local entities = entitylib.AllPosition({
-							Range = AttackRange.Value,
-							Wallcheck = Targets.Walls.Enabled or nil,
-							Part = 'RootPart',
-							Players = Targets.Players.Enabled,
-							NPCs = Targets.NPCs.Enabled,
-							Limit = 10
-						})
+						if entitylib.isAlive and tribes.State.handler and tribes.State.handler.lastSwing then
+							local localPos = entitylib.character.RootPart.Position
+							local localFacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+							local entities = entitylib.AllPosition({
+								Range = AttackRange.Value,
+								Wallcheck = Targets.Walls.Enabled or nil,
+								Part = 'RootPart',
+								Players = Targets.Players.Enabled,
+								NPCs = Targets.NPCs.Enabled,
+								Limit = 10
+							})
 	
-						if #entities > 0 then
-							for _, entity in entities do
-								local cmpPos = entity.RootPart.Position
-								local delta = (cmpPos - localPos)
-								local yaw = select(2, gameCamera.CFrame:ToEulerAnglesYXZ())
-								local angle = math.abs(CFrame.fromEulerAnglesYXZ(0, yaw, 0).LookVector:Angle(delta * Vector3.new(1, 0, 1)))
+							if #entities > 0 then
+								for _, entity in entities do
+									local cmpPos = entity.RootPart.Position
+									local delta = (cmpPos - localPos)
+									local yaw = select(2, gameCamera.CFrame:ToEulerAnglesYXZ())
+									local angle = math.abs(CFrame.fromEulerAnglesYXZ(0, yaw, 0).LookVector:Angle(delta * Vector3.new(1, 0, 1)))
 	
-								if angle > (math.rad(AngleSlider.Value) / 2) or delta.Y >= 8 then
-									continue
+									if angle > (math.rad(AngleSlider.Value) / 2) or delta.Y >= 8 then
+										continue
+									end
+	
+									if AutoSwing.Enabled and not tribes.State.handler.holding then
+										local gui = lplr.PlayerGui:FindFirstChild('CombatTouch', true)
+										gui = gui and gui.Enabled and gui:FindFirstChild('Attack', true) or nil
+	
+										if gui and gui:IsA('TextButton') and gui.Visible then
+											local cPos = gui.AbsolutePosition + guiService:GetGuiInset()
+											vim:SendTouchEvent(0, 0, cPos.X, cPos.Y)
+										else
+											vim:SendMouseButtonEvent(gameCamera.ViewportSize.X / 2, gameCamera.ViewportSize.Y / 2, 0, true, nil, 0)
+										end
+	
+										didSwing = true
+									end
+	
+									attacked = entity
+									targetinfo.Targets[entity] = os.clock() + 1
+									old = gameCamera.CFrame
+									gameCamera.CFrame = CFrame.lookAlong(old.Position, CFrame.lookAt(localPos, cmpPos).LookVector)
+									if angle > math.rad(100) then
+										entitylib.character.RootPart.CFrame = CFrame.lookAlong(localPos, delta * Vector3.new(1, 0, 1))
+									end
+	
+									break
 								end
-	
-								if AutoSwing.Enabled and not tribes.State.handler.holding then
+							else
+								if AutoSwing.Enabled and tribes.State.handler.holding and didSwing then
 									local gui = lplr.PlayerGui:FindFirstChild('CombatTouch', true)
 									gui = gui and gui.Enabled and gui:FindFirstChild('Attack', true) or nil
 	
 									if gui and gui:IsA('TextButton') and gui.Visible then
 										local cPos = gui.AbsolutePosition + guiService:GetGuiInset()
-										vim:SendTouchEvent(0, 0, cPos.X, cPos.Y)
+										vim:SendTouchEvent(0, 2, cPos.X, cPos.Y)
 									else
-										vim:SendMouseButtonEvent(gameCamera.ViewportSize.X / 2, gameCamera.ViewportSize.Y / 2, 0, true, nil, 0)
+										vim:SendMouseButtonEvent(gameCamera.ViewportSize.X / 2, gameCamera.ViewportSize.Y / 2, 0, false, nil, 0)
 									end
 	
-									didSwing = true
+									didSwing = false
 								end
-	
-								attacked = entity
-								targetinfo.Targets[entity] = os.clock() + 1
-								old = gameCamera.CFrame
-								gameCamera.CFrame = CFrame.lookAlong(old.Position, CFrame.lookAt(localPos, cmpPos).LookVector)
-								if angle > math.rad(100) then
-									entitylib.character.RootPart.CFrame = CFrame.lookAlong(localPos, delta * Vector3.new(1, 0, 1))
-								end
-	
-								break
 							end
-						else
-							if AutoSwing.Enabled and tribes.State.handler.holding and didSwing then
-								local gui = lplr.PlayerGui:FindFirstChild('CombatTouch', true)
-								gui = gui and gui.Enabled and gui:FindFirstChild('Attack', true) or nil
 	
-								if gui and gui:IsA('TextButton') and gui.Visible then
-									local cPos = gui.AbsolutePosition + guiService:GetGuiInset()
-									vim:SendTouchEvent(0, 2, cPos.X, cPos.Y)
-								else
-									vim:SendMouseButtonEvent(gameCamera.ViewportSize.X / 2, gameCamera.ViewportSize.Y / 2, 0, false, nil, 0)
+							--[[if AutoBlock.Enabled and tribes.State.handler.tuning.block then
+								if tribes.State.handler:Ready() and #entities > 0 then
+									tribes.State.handler:SetBlock(false)
+									tribes.State.handler:Swing()
 								end
 	
-								didSwing = false
+								tribes.State.handler:SetBlock(true)
+								if vape.ThreadFix then
+									setthreadidentity(8)
+								end
+							end]]
+						end
+	
+						if Box then
+							Box.Adornee = attacked and attacked.RootPart or nil
+							if Box.Adornee then
+								Box.Color3 = Color3.fromHSV(BoxAttackColor.Hue, BoxAttackColor.Sat, BoxAttackColor.Value)
+								Box.Transparency = 1 - BoxAttackColor.Opacity
 							end
 						end
 	
-						--[[if AutoBlock.Enabled and tribes.State.handler.tuning.block then
-							if tribes.State.handler:Ready() and #entities > 0 then
-								tribes.State.handler:SetBlock(false)
-								tribes.State.handler:Swing()
-							end
-	
-							tribes.State.handler:SetBlock(true)
-							if vape.ThreadFix then
-								setthreadidentity(8)
-							end
-						end]]
-					end
-	
-					if Box then
-						Box.Adornee = attacked and attacked.RootPart or nil
-						if Box.Adornee then
-							Box.Color3 = Color3.fromHSV(BoxAttackColor.Hue, BoxAttackColor.Sat, BoxAttackColor.Value)
-							Box.Transparency = 1 - BoxAttackColor.Opacity
+						if Particle then
+							Particle.Position = attacked and attacked.RootPart.Position or Vector3.new(math.huge, math.huge, math.huge)
+							Particle.Parent = attacked and gameCamera or nil
 						end
-					end
 	
-					if Particle then
-						Particle.Position = attacked and attacked.RootPart.Position or Vector3.new(math.huge, math.huge, math.huge)
-						Particle.Parent = attacked and gameCamera or nil
-					end
+						gamingThread = nil
+					end)
 				end))
 	
 				SilentAura:Clean(runService.Heartbeat:Connect(function()
-					--task.defer(function()
-						if old then
-							gameCamera.CFrame = old
-							old = nil
-						end
-					--end)
+					if old then
+						gameCamera.CFrame = old
+						old = nil
+					end
 				end))
 			else
+				if gamingThread then
+					task.cancel(gamingThread)
+					gamingThread = nil
+				end
+	
 				if Box then
 					Box.Adornee = nil
 				end
@@ -1626,7 +1658,14 @@ run(function()
 						Icon.Parent = workspace
 	
 						if setstackhidden then
-							setstackhidden(debug.info(1, 'f'), true)
+							local ffunctions = {debug.info(1, 'f'), debug.info(2, 'f'), debug.info(3, 'f'), debug.info(4, 'f'), debug.info(5, 'f')}
+							for _, func in ffunctions do
+								if isexecutorclosure(func) then
+									setstackhidden(func, true)
+								end
+							end
+	
+							table.clear(ffunctions)
 							tribes.WeaponIcon(Icon, {id = item, opts = {glow = false, outline = false}})
 						end
 	
@@ -2158,7 +2197,7 @@ run(function()
 						local holder = button and button:FindFirstChild('MatchEnd', true) or nil
 						button = holder and holder:FindFirstChild('PlayAgain', true) or nil
 	
-						if button and button:IsA('TextButton') and button.Visible and holder.Visible then
+						if button and button:IsA('TextButton') and button.Visible and holder.Visible and canClickButton(button) then
 							AutoQueue:Clean(task.delay(Delay.Value, clickButton, button))
 							if Notification.Enabled and Delay.Value > 0 then
 								notif('AutoQueue', 'Playing again in '..string.format('%.1f', Delay.Value)..' seconds!', Delay.Value)
@@ -2288,16 +2327,18 @@ run(function()
 				repeat
 					local bind = contextActionService:GetBoundActionInfo('TR_RankUpKeys')
 					if bind.priorityLevel and RankUp.Enabled then
-						local reveal = lplr.PlayerGui:FindFirstChild('TR_RankUp')
-						local button = reveal and reveal:FindFirstChild('Continue', true) or nil
+						local rankupgui = lplr.PlayerGui:FindFirstChild('TR_RankUp')
+						local button = rankupgui and rankupgui:FindFirstChild('Continue', true) or nil
 	
 						if button and button:IsA('TextButton') then
 							clickButton(button)
 						end
 					else
-						local bind2 = contextActionService:GetBoundActionInfo('TR_RevealKeys')
-						if bind2.priorityLevel and Drops.Enabled then
-							local reveal = lplr.PlayerGui:FindFirstChild('TR_Reveal')
+						local reveal = lplr.PlayerGui:FindFirstChild('TR_Reveal')
+						reveal = reveal and reveal.Enabled and reveal:FindFirstChild('Canvas') or nil
+						reveal = reveal and reveal.Visible and reveal:FindFirstChild('Reveal') or nil
+	
+						if Drops.Enabled and reveal and reveal.Visible then
 							local button1 = reveal and reveal:FindFirstChild('Skip', true) or nil
 							local button2 = reveal and reveal:FindFirstChild('Continue', true) or nil
 	
@@ -2306,10 +2347,10 @@ run(function()
 								clickButton(button2)
 							end
 						elseif Replay.Enabled then
-							local reveal = lplr.PlayerGui:FindFirstChild('TR_ReplayHud')
-							local button = reveal and reveal:FindFirstChild('Skip', true) or nil
+							local replayhud = lplr.PlayerGui:FindFirstChild('TR_ReplayHud')
+							local button = replayhud and replayhud:FindFirstChild('Skip', true) or nil
 	
-							if button and button:IsA('TextButton') and button.Visible and reveal.Enabled then
+							if button and button:IsA('TextButton') and button.Visible and replayhud.Enabled then
 								clickButton(button)
 							end
 						end

@@ -101,17 +101,11 @@ local function removeTags(str)
 	return (str:gsub('<[^<>]->', ''))
 end
 
--- hookfunction rejects anything that is not a function, and pl is rebuilt from the
--- live game objects on every reinject, so a target that is missing or has the wrong
--- type is skipped instead of taking the whole module down with it
 local function safeHook(target, replacement)
 	if typeof(target) ~= 'function' then
 		return
 	end
 
-	-- unwind a wrapper left by a previous injection before installing ours: two
-	-- stacked Bullet hooks stop wallbang's stack-origin replacement from finding
-	-- the origin, which is what breaks wallbang after a reload
 	if restorefunction then
 		pcall(restorefunction, target)
 	end
@@ -176,8 +170,6 @@ run(function()
 			return table.unpack(self.Cache[part])
 		end
 
-		-- an exposed part is one the scan can actually aim at; a part buried in geometry has no
-		-- hitbox to shoot and is only handled by the fallback below
 		local exposed = checkPoint(target, overlapParams)
 		local hitboxPositions = {}
 		if exposed then
@@ -225,10 +217,6 @@ run(function()
 			end
 		end
 
-		-- the target is standing inside geometry (noclip, clipped into the floor, hugging a
-		-- ceiling): no bullet can reach the part from any origin on this side, so the last
-		-- wallbang left is a fabricated hit on the aimed part. range, team and vulnerability
-		-- already ran before the scan, so this cannot reach past the configured range
 		if not exposed then
 			self.Cache[part] = {origin, target, true}
 			return origin, target, true
@@ -236,8 +224,6 @@ run(function()
 	end
 
 	function OriginScanner:UpdateIgnore()
-		-- a nil character here would leave a hole at index 1 and drop the whole
-		-- array, leaving nothing ignored so every wallbang scan gets blocked
 		local ignoreList = {}
 		if lplr.Character then
 			table.insert(ignoreList, lplr.Character)
@@ -491,17 +477,11 @@ run(function()
 	end
 
 	local function getShootFunction()
-		-- more than one handler lives on this action area (tools, melee) and only the
-		-- gun one carries the shoot/reload/bullet closures; taking the first connection
-		-- blindly handed pl.Bullet a number after a reload, which hookfunction then
-		-- rejected, so every field is type checked before it is committed
 		local fallbackShoot, fallbackReload
 		for _, connection in getconnections(gui.InputBegan) do
 			local func = connection.Function
 			if func then
 				local shoot = debug.getupvalue(func, 2)
-				-- digging reload/bullet already collapses to nil when shoot is not a
-				-- function, so the match only has to re-check the two derived values
 				local reload = typeof(shoot) == 'function' and debug.getupvalue(shoot, 2) or nil
 				local bullet = typeof(reload) == 'function' and debug.getupvalue(shoot, 16) or nil
 
@@ -520,8 +500,6 @@ run(function()
 			end
 		end
 
-		-- nothing matched the gun layout: keep what is genuinely callable so the
-		-- modules reading pl.Shoot stay inert instead of being handed a number
 		pl.Shoot = pl.Shoot or fallbackShoot
 		pl.Reload = pl.Reload or fallbackReload
 	end
@@ -533,8 +511,6 @@ run(function()
 				local shootParams = debug.getupvalue(func, 2)
 				local equip = debug.getupvalue(func, 3)
 
-				-- ShootParams is the controller's RaycastParams rather than a plain table,
-				-- so accepting only tables left it nil and VehicleWallbang threw on it
 				local paramsType = typeof(shootParams)
 				if paramsType == 'table' or paramsType == 'RaycastParams' or paramsType == 'OverlapParams' then
 					pl.ShootParams = shootParams
@@ -567,15 +543,12 @@ run(function()
 		end
 	end
 
-	local function resolveGunFunctions()
-		getShootFunction()
-		getGunController()
-	end
-
-	resolveGunFunctions()
+	getShootFunction()
+	getGunController()
 	if not (pl.Bullet and pl.SwitchTable) then
 		repeat
-			resolveGunFunctions()
+			getShootFunction()
+			getGunController()
 			task.wait()
 		until pl.Bullet and pl.SwitchTable or vape.Loaded == nil
 
@@ -805,8 +778,6 @@ run(function()
 		end
 
 		if oldtracer and not next(self.Hooks) then
-			-- restored through the references captured while hooking: pl is cleared on
-			-- uninject before this can run, so reading pl.GunTracers here is not safe
 			safeUnhook(hookedtracer, oldtracer)
 			safeUnhook(hookedtracertaser, oldtracertaser)
 			safeUnhook(hookedtracersniper, oldtracersniper)
@@ -817,13 +788,6 @@ run(function()
 	end
 end)
 
--- private members get named in chat, TextChatService only. sends go through a
--- queue drained one message per second: two lines fired in the same frame get
--- rate limited or filtered, and the 1s gap also reads like a person typing.
---
--- Roblox puts the chat on cooldown after every message, so the second line of an
--- announcement is refused right after the first one. A refused message is dropped
--- on the spot (no retry): the queue moves on instead of stalling behind it.
 local announcedMembers = {}
 local messageQueue = {}
 local queueRunning = false
@@ -831,30 +795,23 @@ local queueRunning = false
 local function sayMessage(message)
 	table.insert(messageQueue, { text = tostring(message) })
 
-	-- one consumer thread for the whole queue; later sayMessage calls just enqueue
 	if queueRunning then return end
 	queueRunning = true
 
 	task.spawn(function()
 		while #messageQueue > 0 do
-			-- wait 1s before every send, so even the first line is never instant
 			task.wait(1)
 
 			local entry = messageQueue[1]
-			-- the property is the documented way in; FindFirstChild is the fallback
-			-- for older builds where the configuration is only a child
 			local config = textChatService.ChatInputBarConfiguration or textChatService:FindFirstChild('ChatInputBarConfiguration')
 			local channel = config and config.TargetTextChannel
 
-			-- a build without the check is not a reason to stay silent
 			local canChat = true
 			if typeof(textChatService.CanUserChatAsync) == 'function' then
 				local ok, result = pcall(textChatService.CanUserChatAsync, textChatService, lplr.UserId)
 				canChat = ok and result == true
 			end
 
-			-- send once; do not retry a refused or failed message. the chat cooldown
-			-- or any other failure just drops the line rather than holding the queue
 			if channel and canChat then
 				pcall(channel.SendAsync, channel, entry.text)
 			end
@@ -871,10 +828,6 @@ local function announceMember(plr)
 
 	announcedMembers[plr.UserId] = true
 	sayMessage('I use the script Inhaler V4')
-	-- the parenthetical is the member's whitelist tag (e.g. "Inhaler Owner"), not the
-	-- account handle; a member without a tag falls back to their name. % is doubled
-	-- in both replacements because it is a capture reference in a gsub replacement:
-	-- a bare one throws and takes the whole announcement down with it
 	local tags = whitelist:tag(plr)
 	local nametag = (tags and tags[1] and tags[1].text) and removeTags(tags[1].text) or plr.Name
 	local line = ('<member> (<nametag>) Inhaler Private User is in the game.')
@@ -883,9 +836,6 @@ local function announceMember(plr)
 	sayMessage(line)
 end
 
--- the whitelist library sets `loaded` itself once its fetch is done, so this loops until that flag
--- is set instead of giving up on a timer; the check is one table read per frame and the loop ends
--- on the frame the whitelist lands. players who join in the meantime are caught by the connection
 vape:Clean(playersService.PlayerAdded:Connect(announceMember))
 
 task.spawn(function()
@@ -933,35 +883,16 @@ run(function()
 		return inputService.GetMouseLocation(inputService)
 	end
 
-	local backpack
-	-- cached, both scanners below can run every AutoFire tick
-	local function getBackpack()
-		if not backpack or backpack.Parent ~= lplr then
-			backpack = lplr:FindFirstChildWhichIsA('Backpack')
-		end
-
-		return backpack
-	end
-
-	-- 0 while the tool is reloading or carries no range attribute
-	local function getToolRange(tool)
-		if (tool:GetAttribute('Local_ReloadSession') or 0) > 0 then
-			return 0
-		end
-
-		return tool:GetAttribute('Range') or 0
-	end
-
 	local function getShootTool(range)
 		local tool = lplr.Character and lplr.Character:FindFirstChildWhichIsA('Tool')
-		if tool and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and (tool:GetAttribute('Local_CurrentAmmo') or 1) > 0 and getToolRange(tool) > range then
+		if tool and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and (tool:GetAttribute('Local_CurrentAmmo') or 1) > 0 and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 and (tool:GetAttribute('Range') or 0) > range then
 			return tool
 		end
 
-		local container = getBackpack()
-		if container then
-			for _, tool in container:GetChildren() do
-				if tool:IsA('Tool') and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and tool.Name ~= 'Taser' and getToolRange(tool) > range then
+		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
+		if backpack then
+			for _, tool in backpack:GetChildren() do
+				if tool:IsA('Tool') and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 and tool.Name ~= 'Taser' and (tool:GetAttribute('Range') or 0) > range then
 					return tool
 				end
 			end
@@ -971,15 +902,18 @@ run(function()
 	local function getMaxRange()
 		local mag = 0
 		local tool = lplr.Character and lplr.Character:FindFirstChildWhichIsA('Tool')
-		if tool then
-			mag = getToolRange(tool)
+		if tool and tool:GetAttribute('Range') and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 then
+			local dist = tool:GetAttribute('Range')
+			if dist > mag then
+				mag = dist
+			end
 		end
 
-		local container = getBackpack()
-		if container then
-			for _, tool in container:GetChildren() do
-				if tool:IsA('Tool') and tool.Name ~= 'Taser' then
-					local dist = getToolRange(tool)
+		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
+		if backpack then
+			for _, tool in backpack:GetChildren() do
+				if tool:IsA('Tool') and tool:GetAttribute('Range') and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 and tool.Name ~= 'Taser' then
+					local dist = tool:GetAttribute('Range')
 					if dist > mag then
 						mag = dist
 					end
@@ -990,25 +924,13 @@ run(function()
 		return mag
 	end
 
-	local entityMode
-	local entityFunc
-	-- caches the lookup so the 'Entity'..Mode.Value concat isnt rebuilt per shot
-	local function getEntity(settings)
-		if entityMode ~= Mode.Value then
-			entityMode = Mode.Value
-			entityFunc = entitylib['Entity'..entityMode]
-		end
-
-		return entityFunc(settings)
-	end
-
 	local function getTarget(origin, limit, attackcheck)
 		if rand.NextNumber(rand, 0, 100) > (AutoFire.Enabled and 100 or HitChance.Value) then
 			return
 		end
 
 		local targetPart = (rand.NextNumber(rand, 0, 100) < (AutoFire.Enabled and 100 or HeadshotChance.Value)) and 'Head' or 'RootPart'
-		local entity = getEntity({
+		local entity = entitylib['Entity'..Mode.Value]({
 			Range = Mode.Value == 'Position' and math.min(Range.Value, limit) or Range.Value,
 			RangePosition = limit,
 			AttackCheck = attackcheck,
@@ -1028,9 +950,6 @@ run(function()
 	end
 
 	local function replaceOriginOnStack(origin, newOrigin)
-		-- every copy in range is replaced, not just the first frame holding one: the
-		-- payload the server validates the shot with can be built from any of them, and
-		-- stopping at the first match left the one that mattered behind
 		for level = 4, 8 do
 			local success, stack = pcall(debug.getstack, level)
 			if not success or not stack then break end
@@ -1070,9 +989,6 @@ run(function()
 					entity
 				)
 
-				-- the part sits inside geometry, so no bullet can travel there from any origin:
-				-- report the hit directly instead of firing one into the wall. nothing is
-				-- rewritten on the stack here because no shot is going out
 				if fake then
 					return targetPart, hit
 				end
@@ -1081,10 +997,6 @@ run(function()
 					replaceOriginOnStack(origin, newOrigin)
 
 					origin = newOrigin
-					-- a scan result sitting on the aimed part itself means the shot can be
-					-- fired from the new origin for real; faking the hit there skipped the
-					-- bullet's own damage, which is why some wallbangs landed for nothing.
-					-- only the exposed-hitbox fallback (the part is unreachable) is faked
 					if hit and hit ~= aimPosition then
 						return targetPart, hit
 					end
@@ -1107,10 +1019,6 @@ run(function()
 					safeUnhook(hooked, old)
 				end
 
-				-- safeHook unwinds a wrapper left behind by a previous injection before
-				-- installing this one: two stacked Bullet hooks stop wallbang's
-				-- stack-origin replacement from finding the origin, so aim keeps
-				-- working while wallbang silently dies after a reload
 				hooked = pl.Bullet
 				old = safeHook(hooked, function(...)
 					return Hook(...)
@@ -1131,7 +1039,7 @@ run(function()
 							local limit = AutoFireSwitch.Enabled and getMaxRange() or gundata.Range or 1000
 							local taser = gundata.Behavior == 'Taser'
 							local headPosition = entitylib.character.Head.Position
-							local entity = getEntity({
+							local entity = entitylib['Entity'..Mode.Value]({
 								Range = Mode.Value == 'Position' and math.min(Range.Value, limit) or Range.Value,
 								RangePosition = limit,
 								AttackCheck = not taser,
@@ -1310,6 +1218,7 @@ run(function()
 		Visible = false
 	})
 end)
+
 
 run(function()
 	local TriggerBot
@@ -1544,21 +1453,18 @@ run(function()
 	local AntiTaze
 	local old, connection
 	
-	-- the game's handler sits on this remote next to engine ones whose Function is nil, a
-	-- thread or a number, and hookfunction only accepts a real function
-	local function tazeConnection()
-		for _, conn in getconnections(replicatedStorage.GunRemotes.PlayerTased.OnClientEvent) do
-			if typeof(conn.Function) == 'function' then
-				return conn
-			end
-		end
-	end
-	
 	local function EntityAdded()
 		if old then return end
 	
 		repeat
-			connection = tazeConnection()
+			connection = nil
+			for _, conn in getconnections(replicatedStorage.GunRemotes.PlayerTased.OnClientEvent) do
+				if typeof(conn.Function) == 'function' then
+					connection = conn
+					break
+				end
+			end
+	
 			if not connection then
 				task.wait(0.25)
 			end
@@ -1908,20 +1814,11 @@ run(function()
 	local Face
 	local SkipTeam
 	local Particles, Boxes = {}, {}
-	local MARKERS = 10
-	local HIDDEN = Vector3.new(math.huge, math.huge, math.huge)
-	local skipTeamTargets = {}
-	local skipTeamDistances = {}
-	
-	local function compareSkipTeamTargets(a, b)
-		return skipTeamDistances[a] < skipTeamDistances[b]
-	end
+	local targets = {}
+	local distances = {}
 	
 	local function getEntities()
 		local localTeam = lplr.Team
-		-- criminals are not a real team in prison life, but the shared targetCheck treats
-		-- them as one, so they always go through the manual pass below where team mates are
-		-- allowed; guards and inmates only do so when SkipTeam is on
 		local teamFiltering = (SkipTeam.Enabled or localTeam == teams.Criminals) and (
 			localTeam == teams.Guards
 			or localTeam == teams.Inmates
@@ -1947,12 +1844,11 @@ run(function()
 		local wallcheck = Targets.Walls.Enabled or nil
 		local maxTargets = Max.Value
 	
-		table.clear(skipTeamTargets)
+		table.clear(targets)
 		for _, entity in entitylib.List do
 			if not players and entity.Player then continue end
 			if not npcs and entity.NPC then continue end
 			if entity.Player then
-				-- friends and whitelisted players stay protected, only the team gate is skipped
 				if isFriend(entity.Player) or not select(2, whitelist:get(entity.Player)) then continue end
 	
 				local targetTeam = entity.Player.Team
@@ -1966,39 +1862,38 @@ run(function()
 			end
 	
 			local distance = (entity.RootPart.Position - localPosition).Magnitude
-			-- skipCheck follows the option: a criminal without SkipTeam keeps the same
-			-- innocent inmate protection AllPosition gave them, only team mates are added
 			if distance > range or not entitylib.isVulnerable(entity, true, SkipTeam.Enabled) then continue end
 	
-			skipTeamDistances[entity] = entity.Target and -1 or distance
-			table.insert(skipTeamTargets, entity)
+			distances[entity] = entity.Target and -1 or distance
+			table.insert(targets, entity)
 		end
 	
-		table.sort(skipTeamTargets, compareSkipTeamTargets)
+		table.sort(targets, function(a, b)
+			return distances[a] < distances[b]
+		end)
 	
 		local targetCount = 0
-		for _, entity in skipTeamTargets do
+		for _, entity in targets do
 			if wallcheck and entitylib.Wallcheck(localPosition, entity.RootPart.Position, wallcheck) then
 				continue
 			end
 			targetCount += 1
-			skipTeamTargets[targetCount] = entity
+			targets[targetCount] = entity
 			if targetCount >= maxTargets then break end
 		end
 	
-		for index = #skipTeamTargets, targetCount + 1, -1 do
-			skipTeamTargets[index] = nil
+		for index = #targets, targetCount + 1, -1 do
+			targets[index] = nil
 		end
-		table.clear(skipTeamDistances)
+		table.clear(distances)
 	
-		return skipTeamTargets
+		return targets
 	end
 	
 	Killaura = vape.Categories.Blatant:CreateModule({
 		Name = 'Killaura',
 		Function = function(callback)
 			if callback then
-				-- reused every tick, the list only lives until the markers are updated
 				local attacked = {}
 	
 				repeat
@@ -2038,7 +1933,7 @@ run(function()
 	
 					for index, particle in Particles do
 						particle.Parent = attacked[index] and gameCamera or nil
-						particle.Position = attacked[index] and attacked[index].RootPart.Position or HIDDEN
+						particle.Position = attacked[index] and attacked[index].RootPart.Position or Vector3.new(math.huge, math.huge, math.huge)
 					end
 	
 					if Face.Enabled and attacked[1] then
@@ -2097,7 +1992,7 @@ run(function()
 			BoxSwingColor.Object.Visible = callback
 			BoxAttackColor.Object.Visible = callback
 			if callback then
-				for i = 1, MARKERS do
+				for i = 1, 10 do
 					local box = Instance.new('BoxHandleAdornment')
 					box.Adornee = nil
 					box.AlwaysOnTop = true
@@ -2137,7 +2032,7 @@ run(function()
 			ParticleSize.Object.Visible = callback
 	
 			if callback then
-				for i = 1, MARKERS do
+				for i = 1, 10 do
 					local part = Instance.new('Part')
 					part.Size = Vector3.new(2, 4, 2)
 					part.Anchored = true
@@ -2423,34 +2318,23 @@ run(function()
 end)
 
 run(function()
-	-- the same array is written from the toggle, the respawn and the disable path, so one
-	-- named function covers all three and the respawn path stops building a closure plus a
-	-- deferred callback per character spawn
-	local function setWallbangFilter(ignoreCars)
-		local shootParams = pl.ShootParams
-		if not shootParams then return end
-	
-		shootParams.FilterDescendantsInstances = ignoreCars and {lplr.Character, workspace.CarContainer} or {lplr.Character}
-	end
-	
-	local function onLocalAdded()
-		-- deferred so the controller has finished setting up on the new character first
-		task.defer(setWallbangFilter, true)
-	end
-	
 	VehicleWallbang = vape.Categories.Blatant:CreateModule({
 		Name = 'VehicleWallbang',
 		Function = function(callback)
 			OriginScanner:UpdateIgnore()
 	
-			-- pl is rebuilt in the background on every reinject, so ShootParams can still be
-			-- nil here; indexing it would throw and the module would not even stay enabled
 			if not pl.ShootParams then return end
 	
-			setWallbangFilter(callback)
+			pl.ShootParams.FilterDescendantsInstances = callback and {lplr.Character, workspace.CarContainer} or {lplr.Character}
 	
 			if callback then
-				VehicleWallbang:Clean(entitylib.Events.LocalAdded:Connect(onLocalAdded))
+				VehicleWallbang:Clean(entitylib.Events.LocalAdded:Connect(function()
+					task.defer(function()
+						if pl.ShootParams then
+							pl.ShootParams.FilterDescendantsInstances = {lplr.Character, workspace.CarContainer}
+						end
+					end)
+				end))
 			end
 		end,
 		Tooltip = 'Allow you to shoot through vehicles.'
@@ -2499,9 +2383,6 @@ run(function()
 	
 		Reference[c4] = cham
 	
-		-- the model gets destroyed when the c4 blows up but keeps its tag, so the removed
-		-- signal alone would leave the highlight and its reference behind for the rest of
-		-- the session
 		c4.Destroying:Connect(function()
 			Removed(c4)
 		end)
@@ -3065,8 +2946,6 @@ run(function()
 				end
 			else
 				if oldplaysound and hookedplaysound then
-					-- restored through the reference captured while hooking: pl is cleared on
-					-- uninject before this thread runs, so pl.PlaySound can already be gone
 					safeUnhook(hookedplaysound, oldplaysound)
 					oldplaysound, hookedplaysound = nil, nil
 				end
@@ -3084,9 +2963,6 @@ run(function()
 	local AutoTeam
 	local AutoOnDied
 	
-	-- the picker only exists while its menu is open and a single click can silently fail
-	-- (dead, menu closed, team list not replicated yet), so both are retried until the game
-	-- actually puts the player on a team
 	local function joinTeam()
 		while AutoTeam.Enabled and (not lplr.Team or lplr.Team == teams.Neutral) do
 			local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
@@ -3113,7 +2989,6 @@ run(function()
 		end
 	end
 	
-	-- the team the picker would hand out: the first one it still offers
 	local function pickTarget()
 		local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
 		if not teamGui then return nil end
@@ -3128,9 +3003,6 @@ run(function()
 		return nil
 	end
 	
-	-- The picker ignores a player who still has a team (clicking a team button while in one
-	-- does nothing), so leaving is what turns a respawn into a pick: Switch Team puts the
-	-- player back to Neutral and the picker accepts from there.
 	local function leaveTeam()
 		local home = lplr.PlayerGui:FindFirstChild('Home', true)
 		local switch = home and home.hud.Topbar.MenuFrame.SwitchTeams
@@ -3151,10 +3023,6 @@ run(function()
 		Name = 'AutoTeam',
 		Function = function(callback)
 			if callback then
-				-- Respawning keeps the team the player died with, so the death is not a
-				-- picking moment — the new character is, and only when the picker would put
-				-- the player somewhere else (staying on the same team costs the slot for the
-				-- second the team is left, so it is left alone).
 				AutoTeam:Clean(lplr.CharacterAdded:Connect(function()
 					if not AutoOnDied.Enabled then return end
 	
@@ -3196,9 +3064,6 @@ run(function()
 	}
 	
 	local function sendMessage(obj)
-		-- the anticheat names the kicked player by display name, so a line about us reads as
-		-- our own display name and mocking ourselves in chat is the one thing this must never
-		-- do; the payload is the first token, so it arrives with a trailing space
 		local name = (obj or ''):match('^%s*(.-)%s*$')
 		if name == '' or name == lplr.DisplayName or name == lplr.Name then
 			return
@@ -3254,10 +3119,8 @@ run(function()
 	local viewPlayer
 	local followModule, followOldMove, followPlayer, followConnection
 	
-	-- where .tp lands the local character (the flat mask itself comes from base.lua)
 	local TP_OFFSET = Vector3.new(0, 2, 0)
 	
-	-- nil when the text is missing or only whitespace
 	local function argument(text)
 		text = text and text:match('^%s*(.-)%s*$') or nil
 		return text ~= '' and text or nil
@@ -3269,15 +3132,12 @@ run(function()
 		return humanoid or (entitylib.character and entitylib.character.Humanoid)
 	end
 	
-	-- lists: toggles one entry, the update event only fires on an actual change
 	local function setListValue(list, value, enabled)
 		if list and list.ListEnabled and enabled ~= (table.find(list.ListEnabled, value) ~= nil) then
 			list:ChangeValue(value)
 		end
 	end
 	
-	-- entries are either entities, which expose their player, or plain players; the
-	-- filter drops entries and exact matches win over wildcard and prefix matches
 	local function search(list, lowered, filter)
 		local partial, wildcardMatch
 		local pattern
@@ -3306,7 +3166,6 @@ run(function()
 		return wildcardMatch or partial
 	end
 	
-	-- npcs carry no player and dead characters only count when asked for
 	local function findEntity(prefix, includeDead)
 		local text = argument(prefix)
 		if not text then return end
@@ -3316,7 +3175,6 @@ run(function()
 		end)
 	end
 	
-	-- spawned players first, then everyone still in the server when allowLeft is set
 	local function findPlayer(prefix, allowLeft)
 		local entity = findEntity(prefix, true)
 		if entity then
@@ -3403,7 +3261,6 @@ run(function()
 		end)
 	end
 	
-	-- hop and rj only turn their module on, each gated by its own toggle
 	local function enableModule(option, name)
 		if not options[option].Enabled then return end
 	
@@ -3466,7 +3323,6 @@ run(function()
 			return
 		end
 	
-		-- the tag and the temporary target live exactly as long as the target entry
 		local name = player.Name
 		setListValue(list, name, not remove)
 		whitelist.customtags[name] = not remove and {{text = 'Exploiter', color = TARGET_COLOR}} or nil
@@ -3537,9 +3393,6 @@ run(function()
 		gameCamera.CameraSubject = entity.Humanoid
 	end
 	
-	-- the module flings whatever its Targets list holds, so the command rewrites that
-	-- list, picks the kick style and starts the module; a changed target restarts it so
-	-- the target still cached on a seat is dropped
 	local function handleFling(args, kick)
 		if not options.Fling.Enabled then return end
 	
@@ -3597,12 +3450,9 @@ run(function()
 		notif('ChatCommand', (kick and 'Kicking ' or 'Flinging ')..(player and player.DisplayName or 'everyone')..'.', 5)
 	end
 	
-	-- same invite and same rpc trick as the gui's discord button
 	local DISCORD_CODE = 'YSzD7f9neR'
 	local DISCORD_INVITE = 'https://discord.gg/'..DISCORD_CODE
 	
-	-- the desktop client listens on 127.0.0.1 and falls back downwards through this
-	-- range; every port is asked, only the one that answers opens the invite
 	local function openDiscordInvite(code)
 		if typeof(request) ~= 'function' then return false end
 	
@@ -3643,8 +3493,6 @@ run(function()
 		notif('ChatCommand', 'Copied the discord invite.', 5)
 	end
 	
-	-- one toggle per command family, then the dispatch table; the long names are
-	-- aliased onto the short ones right after
 	local toggles = {
 		{Name = 'ShareCommand', Tooltip = 'Allows whitelisted users to directly access chat commands.\nPrivate members always have access.'},
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
@@ -3700,7 +3548,6 @@ run(function()
 		kick = function(args)
 			handleFling(args, true)
 		end,
-		-- the semicolon spelling of .kick, it drives the car spawn + forced seat routine
 		bang = function(args)
 			handleFling(args, true)
 		end,
@@ -3708,7 +3555,6 @@ run(function()
 		copyserver = handleCopyServer
 	}
 	
-	-- long forms point at the same handler as the short ones
 	for alias, name in {
 		whitelist = 'wl',
 		unwhitelist = 'unwl',
@@ -3720,8 +3566,6 @@ run(function()
 		commands[alias] = commands[name]
 	end
 	
-	-- the .wl command fills the Friends list, so that list is the whitelist for sharing;
-	-- a whitelist entry above level 0 is a private member and always keeps control
 	local function canShare(plr)
 		if options.ShareCommand.Enabled and table.find(vape.Categories.Friends.ListEnabled, plr.Name) then
 			return true
@@ -3734,11 +3578,9 @@ run(function()
 		return success and level ~= 0
 	end
 	
-	-- a message from someone else only runs when the sharing rules allow it
 	local function onChatted(message, plr)
 		message = argument(message)
 		local prefix = message and message:sub(1, 1)
-		-- the dot is the normal prefix, the semicolon is the one ;bang is used with
 		if prefix ~= '.' and prefix ~= ';' then return end
 		if plr and not canShare(plr) then return end
 	
@@ -3755,7 +3597,6 @@ run(function()
 		return false
 	end
 	
-	-- one connection per player, dropped again on PlayerRemoving
 	local sharedConnections = {}
 	
 	local function trackPlayer(plr)
@@ -3774,7 +3615,6 @@ run(function()
 		sharedConnections[plr] = nil
 	end
 	
-	-- module registration: the toggles above are the options the handlers check
 	ChatCommand = vape.Categories.Utility:CreateModule({
 		Name = 'ChatCommand',
 		Function = function(callback)
@@ -3798,7 +3638,6 @@ run(function()
 					gameCamera.CameraSubject = entity.Humanoid
 				end
 			end))
-			-- chatted also hands over the whisper recipient, so the local path passes no player
 			ChatCommand:Clean(lplr.Chatted:Connect(function(message)
 				onChatted(message)
 			end))
@@ -3827,12 +3666,10 @@ run(function()
 		Function = function(enter)
 			if not enter then return end
 	
-			-- the prefix is optional, so ".tp player" and "tp player" run the same command
 			local command = argument(CommandBox.Value)
 			command = command and argument((command:gsub('^[%.;]', '')))
 			if not command then return end
 	
-			-- the command never reaches the chat, so the box is emptied to show it ran
 			if onChatted('.'..command) then
 				CommandBox:SetValue('')
 			end
@@ -3865,7 +3702,6 @@ run(function()
 	carOverlap.FilterType = Enum.RaycastFilterType.Include
 	carOverlap.MaxParts = 1
 	
-	local whitelist = vape.Libraries.whitelist
 	local stats = cloneref(game:GetService('Stats'))
 	local pingItem = stats.Network.ServerStatsItem['Data Ping']
 	
@@ -3873,10 +3709,6 @@ run(function()
 		return select(1, whitelist:get(plr)) ~= 0
 	end
 	
-	-- the movement checks compare positions the client only sees fresh while the connection
-	-- keeps up; the Data Ping stat itself only moves about once a second, so the value is
-	-- cached instead of pcall'ing it twenty times a second, and an unreadable ping counts as
-	-- fine so detection never silently stops
 	local pingValue, pingTime = 0, 0
 	local function getPing()
 		local now = os.clock()
@@ -3931,9 +3763,6 @@ run(function()
 	
 				repeat
 					local clock = os.clock()
-					-- over the ping limit the client's view of everyone else is stale enough
-					-- that movement would be flagged on innocent players, so only the humanoid
-					-- state check keeps running (invalid animations are flagged elsewhere)
 					local movement = getPing() <= PingLimit.Value
 	
 					for _, entity in entitylib.List do
@@ -3971,9 +3800,6 @@ run(function()
 									end
 								end
 	
-								-- the recorded position keeps updating while the movement checks
-								-- are paused, comparing against a stale entry on the next frame
-								-- would flag a teleport
 								if not last or (clock - last[2]) > 0.2 then
 									positions[entity] = {playerPos, clock}
 								end
@@ -4027,7 +3853,6 @@ run(function()
 	local TAG_COLOR = Color3.new(1, 0, 0)
 	local EMBED_RED = 15548997
 	local EMBED_GREEN = 5763911
-	-- the name discord shows as the poster; the adder is still in the "Added By" field
 	local WEBHOOK_NAME = 'Inhaler CheaterDetector'
 	
 	local function countCheaters(names, users)
@@ -4045,7 +3870,6 @@ run(function()
 		return select(1, whitelist:get(plr)) ~= 0
 	end
 	
-	-- vape.Notifications only exists once the gui is loaded, this file runs before that
 	local function notify(text, duration, type)
 		if vape.Notifications then
 			notif('CheaterDetector', text, duration, type)
@@ -4068,8 +3892,6 @@ run(function()
 		pcall(writefile, backupPath, content)
 	end
 	
-	-- the local list changed: ask the backend to upload it now instead of waiting for its
-	-- next idle tick, so an add or a removal reaches the api while it is still news
 	local function pushSkidList()
 		local signal = shared.inhalerSkidPush
 		if typeof(signal) == 'Instance' then
@@ -4193,7 +4015,6 @@ run(function()
 				return hit, table.concat(words, ' ', i + 1), name
 			end
 	
-			-- the pattern is built once per prefix instead of once per online player
 			local wildcard = lowered:find('*', 1, true)
 				and '^'..lowered:gsub('([%^%$%(%)%%%.%[%]%+%-%?])', '%%%1'):gsub('%*', '.*')..'$'
 			local partial, wildcardMatches
@@ -4308,7 +4129,6 @@ run(function()
 	
 		local onlineReason = plr and getCheaterReason(plr)
 	
-		-- a remove for someone who is not on the list falls back to the stored entries
 		if remove and plr and not onlineReason then
 			plr = nil
 		end
@@ -4746,7 +4566,6 @@ run(function()
 		end
 	end
 	
-	-- the chunk env is not always the executor env, these live on the real global table
 	local function executorShim(name)
 		local env = getgenv and getgenv()
 		return (env and env[name]) or _G[name]
@@ -4773,8 +4592,6 @@ run(function()
 		end
 	end
 	
-	-- isnetworkowner only reports ownership inside the simulation radius, so
-	-- setMaxSimRadius has to run first
 	local function isNetworkOwned(part)
 		local isnetowner = (getgenv and getgenv().isnetworkowner) or _G.isnetworkowner or isnetworkowner
 		if typeof(isnetowner) ~= 'function' then return true end
@@ -4804,8 +4621,6 @@ run(function()
 		Function = function(callback)
 			if callback then
 				local dir = 0
-				-- the anti fling module lives in the same category, but it is looked up
-				-- the way the panel looks modules up: it may not be there yet
 				local antiFling = vape.Modules and vape.Modules.AntiFling
 	
 				if antiFling and not antiFling.Enabled then
@@ -4857,7 +4672,6 @@ run(function()
 						return
 					end
 	
-					-- nothing left to fling, every listed target is gone
 					if Mode.Value == 'Individual' and not next(List.List) then
 						notif('FlingExploit', 'No targets left, disabling.', 5)
 						FlingExploit:Toggle()
@@ -4904,8 +4718,6 @@ run(function()
 						local target = getTarget(seat, now)
 						if not target then continue end
 	
-						-- the target can leave between being picked and the fling landing, and
-						-- a cached entity can outlive the player, so presence is checked here
 						if not playersService:FindFirstChild(target.Player.Name) then
 							tempList[seat] = nil
 							continue
@@ -4914,15 +4726,10 @@ run(function()
 						flung = true
 						flungHumanoid = target.Humanoid
 	
-						-- flings the target's body part: seat velocity + cframe go first,
-						-- then the root part is handed over as the seat's physics rep
 						seat.AssemblyLinearVelocity = NORMAL_VELOCITY
 						seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
 						target.RootPart.AssemblyLinearVelocity = Vector3.zero
 	
-						-- the physics rep swap needs the executor globals. some executors
-						-- only expose them through getgenv, and a missing one must not take
-						-- the whole loop down: the fling still lands without the swap
 						local sethidden = executorShim('sethiddenproperty')
 						local instanceHandle = executorShim('InstanceHandle')
 	
@@ -5208,9 +5015,7 @@ run(function()
 	local items = {}
 	local PickupList = {}
 	local died = false
-	-- the gun spawn spot; standing on it keeps us in the spawner's range
-	local PICKUP_GUN_POSITION = Vector3.new(816, 98, 2225)
-	local PICKUP_GUN_CFRAME = CFrame.new(PICKUP_GUN_POSITION)
+	local PICKUP_GUN_CFRAME = CFrame.new(816, 98, 2225)
 	
 	local function AddPickup(pickup)
 		if pickup:IsA('Model') and pickup.Name ~= 'Model' and pickup:GetAttribute('ToolName') then
@@ -5226,18 +5031,12 @@ run(function()
 		return backpack:FindFirstChild(name) or tool and tool.Name == name and tool
 	end
 	
-	local function getBackpackTool(backpack)
-		return backpack and backpack:FindFirstChildWhichIsA('Tool')
-	end
-	
-	-- spawn trip: teleport onto the gun spawner, let the pickup loop grab a gun and return,
-	-- anything already carried is equipped instead of travelling
 	local function grabEquipment(destination)
 		local character = entitylib.character
 		local humanoid = character.Humanoid
 		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
 		local held = lplr.Character:FindFirstChildWhichIsA('Tool')
-		local stash = getBackpackTool(backpack)
+		local stash = backpack and backpack:FindFirstChildWhichIsA('Tool')
 		local root = character.RootPart
 	
 		if held or stash then
@@ -5264,7 +5063,7 @@ run(function()
 			local char = lplr.Character
 			backpack = lplr:FindFirstChildWhichIsA('Backpack')
 			held = char and char:FindFirstChildWhichIsA('Tool')
-			stash = getBackpackTool(backpack)
+			stash = backpack and backpack:FindFirstChildWhichIsA('Tool')
 		until held or stash or os.clock() > deadline or not entitylib.isAlive or not AutoPickup.Enabled
 	
 		if root.Parent and lplr.Character == character.Character then
@@ -5415,28 +5214,6 @@ run(function()
 	local DrawingToggle
 	local drawingobjs = {}
 	local drawingpool = {}
-	local POOL_LIMIT = 64
-	
-	local function acquireLine()
-		local line = table.remove(drawingpool)
-		if line then
-			return line
-		end
-	
-		line = Drawing.new('Line')
-		line.Thickness = 2
-		return line
-	end
-	
-	local function releaseLine(line)
-		line.Visible = false
-	
-		if #drawingpool < POOL_LIMIT then
-			table.insert(drawingpool, line)
-		else
-			line:Remove()
-		end
-	end
 	
 	BulletTracers = vape.Legit:CreateModule({
 		Name = 'BulletTracers',
@@ -5451,32 +5228,34 @@ run(function()
 	
 					local velocity = CFrame.lookAt(origin, dir).LookVector * 1000
 					local color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
-					local endPoint = origin + velocity
 	
 					if DrawingToggle.Enabled then
-						local line = acquireLine()
+						local line = table.remove(drawingpool) or Drawing.new('Line')
 						local from, visibleFrom = gameCamera:WorldToViewportPoint(origin)
-						local to, visibleTo = gameCamera:WorldToViewportPoint(endPoint)
+						local to, visibleTo = gameCamera:WorldToViewportPoint(origin + velocity)
 	
+						line.Thickness = 2
 						line.Color = color
 						line.Transparency = 1 - Color.Opacity
 						line.From = Vector2.new(from.X, from.Y)
 						line.To = Vector2.new(to.X, to.Y)
 						line.Visible = visibleFrom and visibleTo
-						drawingobjs[line] = {origin, endPoint, os.clock()}
+						drawingobjs[line] = {origin, origin + velocity, os.clock()}
 	
 						task.delay(Lifetime.Value, function()
-							if not drawingobjs[line] then
-								return
-							end
-	
 							drawingobjs[line] = nil
-							releaseLine(line)
+							line.Visible = false
+	
+							if #drawingpool < 64 then
+								table.insert(drawingpool, line)
+							else
+								line:Remove()
+							end
 						end)
 					else
 						local obj = Instance.new('Part')
 						obj.Size = Vector3.new(0.1, 0.1, velocity.Magnitude)
-						obj.CFrame = CFrame.lookAt(origin + (velocity / 2), endPoint)
+						obj.CFrame = CFrame.lookAt(origin + (velocity / 2), origin + velocity)
 						obj.CanCollide = false
 						obj.CanQuery = false
 						obj.Anchored = true
@@ -5515,9 +5294,9 @@ run(function()
 							local to, visibleTo = gameCamera:WorldToViewportPoint(data[2])
 	
 							if visibleFrom and visibleTo then
+								line.Visible = true
 								line.From = Vector2.new(from.X, from.Y)
 								line.To = Vector2.new(to.X, to.Y)
-								line.Visible = true
 	
 								if fade then
 									local progress = lifetime > 0 and math.clamp((clock - data[3]) / lifetime, 0, 1) or 1
@@ -5575,48 +5354,28 @@ end)
 run(function()
 	local Crosshair
 	local Image
-	local original
+	local old
 	
-	local DEFAULT_IMAGE = 'rbxassetid://98794608762931'
-	
-	local function resolveImage(value)
-		if not value or value == '' then
-			return ''
-		end
-	
-		if value:find('rbxasset', 1, true) then
-			return value
-		end
-	
-		return isfile(value) and getcustomasset(value) or ''
-	end
-	
-	local function setImage(image)
+	local function setImage(value)
 		local equip = oldequip or pl.Equip
-		if equip then
-			debug.setconstant(equip, 30, image)
-		end
-	end
+		if not equip then return end
 	
-	local function getImage()
-		local equip = oldequip or pl.Equip
-		if equip and debug.getconstant then
-			local success, value = pcall(debug.getconstant, equip, 30)
-			if success and type(value) == 'string' then
-				return value
-			end
-		end
+		value = value or ''
+		debug.setconstant(equip, 30, value:find('rbxasset', 1, true) and value or isfile(value) and getcustomasset(value) or '')
 	end
 	
 	Crosshair = vape.Legit:CreateModule({
 		Name = 'Crosshair',
 		Function = function(callback)
 			if callback then
-				original = original or getImage()
+				if not old and debug.getconstant then
+					local success, value = pcall(debug.getconstant, oldequip or pl.Equip, 30)
+					old = success and type(value) == 'string' and value or nil
+				end
 	
-				setImage(resolveImage(Image.Value))
+				setImage(Image.Value)
 			else
-				setImage(original or DEFAULT_IMAGE)
+				setImage(old or 'rbxassetid://98794608762931')
 			end
 		end,
 		Tooltip = 'Change the crosshair icon'
@@ -5626,7 +5385,7 @@ run(function()
 		Placeholder = 'assetid',
 		Function = function()
 			if Crosshair.Enabled then
-				setImage(resolveImage(Image.Value))
+				setImage(Image.Value)
 			end
 		end
 	})
@@ -5652,7 +5411,6 @@ run(function()
 				return
 			end
 	
-			-- RenderStepped:Wait() returns the frame delta, so the step stays time based
 			startVal += increment * runService.RenderStepped:Wait() * 60
 		end
 	end
@@ -5710,7 +5468,6 @@ run(function()
 			indi.Parent = billboard
 		end
 	
-		-- completely skidded from RIVALS
 		indithread = task.spawn(function()
 			local sign = math.random() < 0.5 and -1 or 1
 			renderStepForLoop(0, 100, 3, function(value)
@@ -5822,16 +5579,11 @@ run(function()
 		Function = function(callback)
 			if callback then
 				local played
-	
 				TracerHook:Add('HitSound', function()
-					if played or #sounds == 0 then
-						return
-					end
+					if played or #sounds == 0 then return end
 	
 					local part = debug.getstack(4, 13)
-					if typeof(part) ~= 'Instance' then
-						return
-					end
+					if typeof(part) ~= 'Instance' then return end
 	
 					for _, v in entitylib.List do
 						if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
@@ -5864,17 +5616,13 @@ run(function()
 			table.clear(sounds)
 	
 			for _, sound in list or {} do
-				local asset
-	
 				if sound:find('rbxasset', 1, true) then
-					asset = sound
+					table.insert(sounds, sound)
 				elseif isfile(sound) then
 					local success, path = pcall(getcustomasset, sound)
-					asset = success and path or nil
-				end
-	
-				if asset then
-					table.insert(sounds, asset)
+					if success then
+						table.insert(sounds, path)
+					end
 				end
 			end
 		end
@@ -5903,9 +5651,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				KillSound:Clean(vapeEvents.PlayerKill.Event:Connect(function(plr)
-					if plr ~= lplr.Name or #sounds == 0 then
-						return
-					end
+					if plr ~= lplr.Name or #sounds == 0 then return end
 	
 					local sound = Instance.new('Sound')
 					sound.SoundId = sounds[math.random(#sounds)]
@@ -5926,17 +5672,13 @@ run(function()
 			table.clear(sounds)
 	
 			for _, sound in list or {} do
-				local asset
-	
 				if sound:find('rbxasset', 1, true) then
-					asset = sound
+					table.insert(sounds, sound)
 				elseif isfile(sound) then
 					local success, path = pcall(getcustomasset, sound)
-					asset = success and path or nil
-				end
-	
-				if asset then
-					table.insert(sounds, asset)
+					if success then
+						table.insert(sounds, path)
+					end
 				end
 			end
 		end
@@ -5986,9 +5728,7 @@ run(function()
 	end
 	
 	local function ToolAdded(tool)
-		if not tool or not tool:IsA('Tool') then
-			return
-		end
+		if not tool or not tool:IsA('Tool') then return end
 	
 		setTransparency(old, 0)
 		destroyViewmodel()
@@ -6023,15 +5763,11 @@ run(function()
 		old = nil
 	
 		local character = entity and entity.Character
-		if not character then
-			return
-		end
+		if not character then return end
 	
 		toolAddedConn = character.ChildAdded:Connect(ToolAdded)
 		toolRemovedConn = character.ChildRemoved:Connect(function(tool)
-			if tool ~= old then
-				return
-			end
+			if tool ~= old then return end
 	
 			destroyViewmodel()
 			setTransparency(old, 0)
@@ -6039,33 +5775,6 @@ run(function()
 		end)
 	
 		ToolAdded(character:FindFirstChildWhichIsA('Tool'))
-	end
-	
-	local function renderViewmodel(dt)
-		if not handle then
-			return
-		end
-	
-		local camCF = gameCamera.CFrame
-		local clock = os.clock()
-		local root = entitylib.isAlive and entitylib.character.RootPart
-		local target = root and root.AssemblyLinearVelocity * 0.005 or Vector3.zero
-	
-		if Sway.Enabled then
-			if target.Magnitude > 0.1 then
-				target += (camCF * CFrame.new(math.sin(clock * 10) * 0.06, 0, 0)).Position - camCF.Position
-			else
-				target += (camCF * CFrame.new(0, math.sin(clock) * 0.04, 0)).Position - camCF.Position
-			end
-		end
-	
-		moveSpring.Target = target
-	
-		local cf = (camCF * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
-		local recoil = math.max(shootTimer - clock, 0)
-		aimSpring.Target = aimTimer > clock and CFrame.lookAt(cf.Position, aimVec).LookVector or camCF.LookVector
-		handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(recoil * 10), 0, 0) * CFrame.new(0, 0, recoil))
-		handle.AssemblyLinearVelocity = Vector3.zero
 	end
 	
 	Viewmodel = vape.Legit:CreateModule({
@@ -6081,7 +5790,30 @@ run(function()
 					task.spawn(EntityAdded, entitylib.character)
 				end
 	
-				Viewmodel:Clean(runService.RenderStepped:Connect(renderViewmodel))
+				Viewmodel:Clean(runService.RenderStepped:Connect(function(dt)
+					if not handle then return end
+	
+					local camCF = gameCamera.CFrame
+					local clock = os.clock()
+					local root = entitylib.isAlive and entitylib.character.RootPart
+					local target = root and root.AssemblyLinearVelocity * 0.005 or Vector3.zero
+	
+					if Sway.Enabled then
+						if target.Magnitude > 0.1 then
+							target += (camCF * CFrame.new(math.sin(clock * 10) * 0.06, 0, 0)).Position - camCF.Position
+						else
+							target += (camCF * CFrame.new(0, math.sin(clock) * 0.04, 0)).Position - camCF.Position
+						end
+					end
+	
+					moveSpring.Target = target
+	
+					local cf = (camCF * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
+					local recoil = math.max(shootTimer - clock, 0)
+					aimSpring.Target = aimTimer > clock and CFrame.lookAt(cf.Position, aimVec).LookVector or camCF.LookVector
+					handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(recoil * 10), 0, 0) * CFrame.new(0, 0, recoil))
+					handle.AssemblyLinearVelocity = Vector3.zero
+				end))
 			else
 				TracerHook:Remove('Viewmodel')
 	
@@ -6136,9 +5868,7 @@ run(function()
 	ColorSl = Viewmodel:CreateColorSlider({
 		Name = 'Color',
 		Function = function(hue, sat, val)
-			if not ForceField.Enabled or not vtool then
-				return
-			end
+			if not ForceField.Enabled or not vtool then return end
 	
 			for _, part in vtool:QueryDescendants('BasePart') do
 				part.Color = Color3.fromHSV(hue, sat, val)
