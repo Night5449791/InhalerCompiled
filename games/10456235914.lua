@@ -95,19 +95,22 @@ function redwood.invoke(name, ...)
 	return suc and result or nil
 end
 
+-- ignores dead characters so AutoReset does not keep firing at a guard corpse
 function redwood.nearestPlayer(team, range)
-	local character = entitylib.character
-	if not character then return end
+	local character = lplr.Character
+	local root = character and character:FindFirstChild('HumanoidRootPart')
+	if not root then return end
 
-	local root, closest, distance = character.RootPart, nil, range or math.huge
+	local closest, closestDistance = nil, range or math.huge
 	for _, plr in playersService:GetPlayers() do
 		if plr ~= lplr and (not team or redwood.isTeam(plr, team)) then
 			local char = plr.Character
 			local other = char and char:FindFirstChild('HumanoidRootPart')
-			if other then
+			local humanoid = char and char:FindFirstChildOfClass('Humanoid')
+			if other and humanoid and humanoid.Health > 0 then
 				local magnitude = (other.Position - root.Position).Magnitude
-				if magnitude < distance then
-					closest, distance = plr, magnitude
+				if magnitude < closestDistance then
+					closest, closestDistance = plr, magnitude
 				end
 			end
 		end
@@ -127,15 +130,49 @@ local function addressValue(value)
 	return min
 end
 
-function redwood.isTarget(plr)
-	if plr == lplr or isFriend(plr) then return false end
+function redwood.humanoid(character)
+	return character and character:FindFirstChildOfClass('Humanoid') or nil
+end
 
-	local character = plr.Character
-	local humanoid = character and character:FindFirstChildOfClass('Humanoid')
-	if not humanoid or humanoid.Health <= 0 then return false end
+function redwood.isDead(plr)
+	local character = plr and plr.Character
+	local humanoid = redwood.humanoid(character)
+	return humanoid == nil or humanoid.Health <= 0
+end
 
-	local team = plr.Team
-	return not (team and lplr.Team and team == lplr.Team)
+-- Fugitive and Prisoners are both "criminal" teams: guards may attack them, and they may
+-- attack guards. Neutral/Krampus are left alone by the team check so they stay optional.
+local hostileTeams = {
+	[redwood.Teams.Guards] = {[redwood.Teams.Prisoners] = true, [redwood.Teams.Fugitive] = true},
+	[redwood.Teams.Prisoners] = {[redwood.Teams.Guards] = true},
+	[redwood.Teams.Fugitive] = {[redwood.Teams.Guards] = true}
+}
+
+-- strict teams[] table is optional; without it anything not on your own team is a target
+function redwood.isTarget(plr, strict)
+	if not plr or plr == lplr or isFriend(plr) or redwood.isDead(plr) then return false end
+	if redwood.hasState(plr.Character, 'Handcuffed_') then return false end
+
+	local myTeam, team = redwood.team(lplr), redwood.team(plr)
+	if strict and myTeam and team then
+		local allowed = hostileTeams[myTeam]
+		return allowed ~= nil and allowed[team] == true
+	end
+
+	return not (team and myTeam and team == myTeam)
+end
+
+-- entitylib target check: Friend list, dead bodies, handcuffed players and own team
+function redwood.targetCheck(ent)
+	if not ent or ent.NPC then return false end
+
+	local plr = ent.Player
+	if not plr or plr == lplr or isFriend(plr) then return false end
+	if ent.Health and ent.Health <= 0 then return false end
+	if ent.Character and redwood.hasState(ent.Character, 'Handcuffed_') then return false end
+
+	local myTeam, team = redwood.team(lplr), redwood.team(plr)
+	return not (team and myTeam and team == myTeam)
 end
 
 function redwood.meleeTool()
@@ -166,10 +203,11 @@ function redwood.attack(target, partName)
 	local suc, config = pcall(require, frame)
 	if not suc or type(config) ~= 'table' then return false end
 
-	local humanoid = character:FindFirstChildOfClass('Humanoid')
+	local humanoid = redwood.humanoid(character)
 	local root = character:FindFirstChild('HumanoidRootPart')
-	local part = character:FindFirstChild(partName) or character:FindFirstChild('Head') or root
+	local part = (partName and character:FindFirstChild(partName)) or character:FindFirstChild('Head') or root
 	if not (part and humanoid and root) then return false end
+	if humanoid.Health <= 0 then return false end
 
 	local combo = tool:FindFirstChild('Combo')
 
@@ -250,6 +288,8 @@ run(function()
 end)
 
 run(function()
+	entitylib.targetCheck = redwood.targetCheck
+
 	entitylib.getEntityColor = function(ent)
 		if not (ent.Player and vape.Settings.Modules.Options['Use team color'].Enabled) then return end
 		if isFriend(ent.Player, true) then
@@ -271,39 +311,65 @@ run(function()
 	local FOV
 	local Part
 	local ShowTarget
+	local connections = {}
+	
+	local function disconnectAll()
+		for tool, connection in connections do
+			connection:Disconnect()
+			connections[tool] = nil
+		end
+	end
+	
+	-- entities carry their target part, so a renamed or missing part degrades to the root
+	-- instead of erroring inside EntityMouse
+	local function aimEntity()
+		local part = Part.Value
+		local entity = entitylib.EntityMouse({
+			Range = FOV.Value,
+			Part = part,
+			Players = true,
+			NPCs = true
+		})
+	
+		if not entity and part ~= 'RootPart' then
+			entity = entitylib.EntityMouse({
+				Range = FOV.Value,
+				Part = 'RootPart',
+				Players = true,
+				NPCs = true
+			})
+		end
+	
+		return entity
+	end
 	
 	SilentAim = vape.Categories.Combat:CreateModule({
 		Name = 'SilentAim',
 		Function = function(callback)
-			if not callback then return end
+			disconnectAll()
 	
-			local connected = {}
+			if not callback then return end
 	
 			repeat
 				local tool = redwood.meleeTool()
-				if tool and not connected[tool] then
-					connected[tool] = true
-	
-					SilentAim:Clean(tool.Activated:Connect(function()
+				if tool and not connections[tool] then
+					connections[tool] = tool.Activated:Connect(function()
 						if not SilentAim.Enabled then return end
 	
-						local entity = entitylib.EntityMouse({
-							Range = FOV.Value,
-							Part = Part.Value,
-							Players = true,
-							NPCs = true
-						})
-	
-						if not entity or not redwood.attack(entity, Part.Value) then return end
+						local entity = aimEntity()
+						if not entity then return end
+						if not redwood.attack(entity, Part.Value) then return end
 	
 						if ShowTarget.Enabled then
 							targetinfo.Targets[entity] = os.clock() + 1
 						end
-					end))
+					end)
 				end
 	
 				task.wait(1)
 			until not SilentAim.Enabled or vape.Loaded == nil
+	
+			disconnectAll()
 		end,
 		Tooltip = 'Adds a melee hit on the closest target inside the FOV every time you attack'
 	})
@@ -334,22 +400,32 @@ run(function()
 		Function = function(callback)
 			if not callback then return end
 	
+			-- the server drops Reset calls that arrive while a respawn is already pending, so
+			-- the loop only fires once and then waits for the new character to spawn
+			local lastReset = 0
+	
 			repeat
 				local character = lplr.Character
-				local reset = character ~= nil and OnArrest.Enabled and redwood.hasState(character, 'ArrestCurrent')
+				local humanoid = redwood.humanoid(character)
+				local alive = humanoid ~= nil and humanoid.Health > 0
+				local reset = false
 	
-				if not reset and Distance.Value > 0 then
-					if not OnlyPrisoners.Enabled or redwood.isTeam(lplr, redwood.Teams.Prisoners) or redwood.isTeam(lplr, redwood.Teams.Fugitive) then
-						reset = redwood.nearestPlayer(redwood.Teams.Guards, Distance.Value) ~= nil
+				if alive and os.clock() - lastReset > 1 then
+					reset = OnArrest.Enabled and redwood.hasState(character, 'ArrestCurrent')
+	
+					if not reset and Distance.Value > 0 then
+						if not OnlyPrisoners.Enabled or redwood.isTeam(lplr, redwood.Teams.Prisoners) or redwood.isTeam(lplr, redwood.Teams.Fugitive) then
+							reset = redwood.nearestPlayer(redwood.Teams.Guards, Distance.Value) ~= nil
+						end
+					end
+	
+					if reset then
+						redwood.fire('Reset')
+						lastReset = os.clock()
 					end
 				end
 	
-				if reset then
-					redwood.fire('Reset')
-					task.wait(0.5)
-				else
-					task.wait(0.1)
-				end
+				task.wait(reset and 0.5 or 0.1)
 			until not AutoReset.Enabled or vape.Loaded == nil
 		end,
 		Tooltip = 'Resets your character before a guard can arrest you'
@@ -383,30 +459,48 @@ run(function()
 	local Delay
 	local TeamCheck
 	
+	-- picks the closest valid target once per tick instead of attacking everyone in range:
+	-- one InflictTarget per swing is what the server expects, extra calls are wasted
+	-- bandwidth and trip the Adonis rate checks
+	local function closestTarget(root, range, teamCheck)
+		local best, bestDistance
+		for _, plr in playersService:GetPlayers() do
+			if plr ~= lplr and (not teamCheck or redwood.isTarget(plr)) then
+				local character = plr.Character
+				local other = character and character:FindFirstChild('HumanoidRootPart')
+				if other then
+					local distance = (other.Position - root.Position).Magnitude
+					if distance <= range and (not bestDistance or distance < bestDistance) then
+						best, bestDistance = plr, distance
+					end
+				end
+			end
+		end
+	
+		return best
+	end
+	
 	Killaura = vape.Categories.Blatant:CreateModule({
 		Name = 'Killaura',
 		Function = function(callback)
 			if not callback then return end
+	
+			local swingAt = 0
 	
 			repeat
 				local tool = redwood.meleeTool()
 				local character = lplr.Character
 				local root = character and character:FindFirstChild('HumanoidRootPart')
 	
-				if tool and root then
-					for _, plr in playersService:GetPlayers() do
-						if not Killaura.Enabled then break end
-						if not TeamCheck.Enabled or redwood.isTarget(plr) then
-							local targetCharacter = plr.Character
-							local other = targetCharacter and targetCharacter:FindFirstChild('HumanoidRootPart')
-							if other and (other.Position - root.Position).Magnitude <= Range.Value then
-								redwood.attack(plr, Part.Value)
-							end
-						end
+				if tool and root and os.clock() >= swingAt then
+					local target = closestTarget(root, Range.Value, TeamCheck.Enabled)
+					if target then
+						redwood.attack(target, Part.Value)
+						swingAt = os.clock() + Delay.Value
 					end
 				end
 	
-				task.wait(Delay.Value)
+				task.wait(0.05)
 			until not Killaura.Enabled or vape.Loaded == nil
 		end,
 		Tooltip = 'Hits everyone in range with your equipped melee weapon'
@@ -446,19 +540,37 @@ end)
 run(function()
 	local CuffedESP
 	local Color
+	local ColorTeam
 	local highlights = {}
 	
-	local function clearHighlights()
-		for character, highlight in highlights do
+	local function removeHighlight(character)
+		local highlight = highlights[character]
+		if highlight then
 			highlight:Destroy()
 			highlights[character] = nil
 		end
 	end
 	
-	local function updateColor()
-		local color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+	local function clearHighlights()
+		for character in highlights do
+			removeHighlight(character)
+		end
+		table.clear(highlights)
+	end
 	
-		for _, highlight in highlights do
+	local function highlightColor(character)
+		if ColorTeam.Enabled then
+			local plr = playersService:GetPlayerFromCharacter(character)
+			local team = plr and plr.Team
+			if team then return team.TeamColor.Color end
+		end
+	
+		return Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+	end
+	
+	local function updateColor()
+		for character, highlight in highlights do
+			local color = highlightColor(character)
 			highlight.FillColor = color
 			highlight.OutlineColor = color
 		end
@@ -471,33 +583,53 @@ run(function()
 	
 			if not callback then return end
 	
+			-- characters that die or respawn leave the world without notifying us, so the
+			-- per character highlight is dropped as soon as its adornee is gone
+			local removed = workspace.ChildRemoved:Connect(function(child)
+				removeHighlight(child)
+			end)
+	
 			repeat
 				for _, plr in playersService:GetPlayers() do
 					local character = plr.Character
 					if character and character ~= lplr.Character then
+						local humanoid = redwood.humanoid(character)
+						local alive = humanoid and humanoid.Health > 0
+						local cuffed = alive and redwood.hasState(character, 'Handcuffed_')
 						local highlight = highlights[character]
-						local cuffed = redwood.state(character, 'Handcuffed_')
 	
 						if cuffed and not highlight then
 							highlight = Instance.new('Highlight')
-							highlight.FillColor = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+							local color = highlightColor(character)
+							highlight.FillColor = color
 							highlight.FillTransparency = 0.65
-							highlight.OutlineColor = highlight.FillColor
+							highlight.OutlineColor = color
 							highlight.OutlineTransparency = 0
 							highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 							highlight.Adornee = character
 							highlight.Parent = character
 							highlights[character] = highlight
 						elseif not cuffed and highlight then
-							highlight:Destroy()
-							highlights[character] = nil
+							removeHighlight(character)
+						elseif highlight then
+							local color = highlightColor(character)
+							highlight.FillColor = color
+							highlight.OutlineColor = color
 						end
+					end
+				end
+	
+				for character in highlights do
+					local plr = playersService:GetPlayerFromCharacter(character)
+					if not plr or plr.Character ~= character then
+						removeHighlight(character)
 					end
 				end
 	
 				task.wait(0.5)
 			until not CuffedESP.Enabled or vape.Loaded == nil
 	
+			removed:Disconnect()
 			clearHighlights()
 		end,
 		Tooltip = 'Highlights players that are already handcuffed'
@@ -510,6 +642,10 @@ run(function()
 		Function = function()
 			updateColor()
 		end
+	})
+	ColorTeam = CuffedESP:CreateToggle({
+		Name = 'Use team color',
+		Tooltip = 'Tints the highlight with the cuffed player team colour'
 	})
 	
 end)
