@@ -22,6 +22,15 @@ local whitelist = vape.Libraries.whitelist
 local targetinfo = vape.Libraries.targetinfo
 local sessioninfo = vape.Libraries.sessioninfo
 
+-- the option objects are created once when the gui loads and profiles only flip Enabled, so
+-- they are resolved here instead of hashing the same names on every per-player check
+local friends = vape.Categories.Friends
+local useFriends = friends.Options['Use friends']
+local recolorFriends = friends.Options['Recolor visuals']
+local friendsColor = friends.Options['Friends color']
+local teamsByServer = vape.Settings.Modules.Options['Teams by server']
+local useTeamColor = vape.Settings.Modules.Options['Use team color']
+
 local sentence = {
 	Teams = {
 		Guards = 'Guards',
@@ -32,14 +41,14 @@ local sentence = {
 }
 
 local function isFriend(plr, recolor)
-	if vape.Categories.Friends.Options['Use friends'].Enabled then
-		local friend = table.find(vape.Categories.Friends.ListEnabled, plr.Name) and true
-		if recolor then
-			friend = friend and vape.Categories.Friends.Options['Recolor visuals'].Enabled
-		end
-		return friend
+	if not useFriends.Enabled then return nil end
+
+	local friend = table.find(friends.ListEnabled, plr.Name) and true
+	if recolor then
+		friend = friend and recolorFriends.Enabled
 	end
-	return nil
+
+	return friend
 end
 
 local playerStatsFolder = replicatedStorage:FindFirstChild('PlayerStats')
@@ -104,18 +113,11 @@ function sentence.root(plr)
 	return character and character:FindFirstChild('HumanoidRootPart') or nil
 end
 
--- ArrestPrompt / SellPrompt are ProximityPrompts parented to the target's HumanoidRootPart and
--- the game only raises their MaxActivationDistance while the target is a valid arrest target
-function sentence.prompt(plr, name)
-	local root = sentence.root(plr)
-	return root and root:FindFirstChild(name) or nil
-end
-
 function sentence.isTarget(plr)
 	if not plr or plr == lplr then return false end
 	if isFriend(plr) then return false end
 	if not select(2, whitelist:get(plr)) then return false end
-	if vape.Settings.Modules.Options['Teams by server'].Enabled then
+	if teamsByServer.Enabled then
 		local team = sentence.team(plr)
 		return team ~= nil and team ~= sentence.team(lplr)
 	end
@@ -201,9 +203,9 @@ run(function()
 	end
 
 	entitylib.getEntityColor = function(entity)
-		if not (entity.Player and vape.Settings.Modules.Options['Use team color'].Enabled) then return end
+		if not (entity.Player and useTeamColor.Enabled) then return end
 		if isFriend(entity.Player, true) then
-			return Color3.fromHSV(vape.Categories.Friends.Options['Friends color'].Hue, vape.Categories.Friends.Options['Friends color'].Sat, vape.Categories.Friends.Options['Friends color'].Value)
+			return Color3.fromHSV(friendsColor.Hue, friendsColor.Sat, friendsColor.Value)
 		end
 
 		local team = entity.Player.Team
@@ -228,10 +230,9 @@ local function instantPrompt(prompt)
 end
 
 run(function()
-	for _, object in workspace:GetDescendants() do
-		if object:IsA('ProximityPrompt') then
-			instantPrompt(object)
-		end
+	-- the selector runs inside the engine instead of walking every descendant of the map
+	for _, object in workspace:QueryDescendants('ProximityPrompt') do
+		instantPrompt(object)
 	end
 
 	vape:Clean(workspace.DescendantAdded:Connect(function(object)
@@ -281,9 +282,7 @@ run(function()
 	end)
 end)
 
-for _, v in {'MurderMystery'} do
-	vape:Remove(v)
-end
+vape:Remove('MurderMystery')
 
 
 run(function()
@@ -304,15 +303,22 @@ run(function()
 				local root = sentence.root(lplr)
 	
 				if root and sentence.isCop(lplr) then
+					-- the sliders are read once per pass, not once per player
+					local range = ArrestRange.Value
+					local origin = root.Position
+	
 					for _, plr in playersService:GetPlayers() do
 						if plr == lplr or not sentence.isDowned(plr) or not sentence.isTarget(plr) then continue end
 	
 						local other = sentence.root(plr)
-						local prompt = sentence.prompt(plr, 'ArrestPrompt')
-						if not prompt or not other then continue end
-						if (other.Position - root.Position).Magnitude > ArrestRange.Value then continue end
+						if not other or (other.Position - origin).Magnitude > range then continue end
 	
-						prompt.MaxActivationDistance = ArrestRange.Value
+						-- the prompt is parented to the root this pass already has, so it is not
+						-- walked to a second time through sentence.root
+						local prompt = other:FindFirstChild('ArrestPrompt')
+						if not prompt then continue end
+	
+						prompt.MaxActivationDistance = range
 						prompt.HoldDuration = 0
 						pcall(prompt.InputHoldBegin, prompt)
 						task.wait()
@@ -354,6 +360,7 @@ run(function()
 	local AutoReset
 	local ResetDistance
 	local ResetWhileDowned
+	local guards = nil
 	
 	-- the reset button is wired to WeaponEvent:FireServer('Reset'), which is also the cheapest way
 	-- out of an arrest: a downed player that respawns cannot be handcuffed any more
@@ -362,11 +369,16 @@ run(function()
 		Function = function(callback)
 			if not callback then return end
 	
+			guards = sentence.Teams.Guards
+	
 			repeat
 				local reset = ResetWhileDowned.Enabled and sentence.status(lplr, 'Downed') == true
 	
-				if not reset and ResetDistance.Value > 0 then
-					reset = sentence.nearestPlayer(sentence.Teams.Guards, ResetDistance.Value) ~= nil
+				if not reset then
+					local distance = ResetDistance.Value
+					if distance > 0 then
+						reset = sentence.nearestPlayer(guards, distance) ~= nil
+					end
 				end
 	
 				if reset then
@@ -414,12 +426,17 @@ run(function()
 				local root = sentence.root(lplr)
 	
 				if root then
+					-- the options are read once per pass, not once per player
+					local range = StompRange.Value
+					local teamCheck = StompTeamCheck.Enabled
+					local origin = root.Position
+	
 					for _, plr in playersService:GetPlayers() do
 						if plr == lplr or not sentence.isDowned(plr) then continue end
-						if StompTeamCheck.Enabled and not sentence.isTarget(plr) then continue end
+						if teamCheck and not sentence.isTarget(plr) then continue end
 	
 						local other = sentence.root(plr)
-						if other and (other.Position - root.Position).Magnitude <= StompRange.Value then
+						if other and (other.Position - origin).Magnitude <= range then
 							sentence.fire('CarryStompEvent', 'EPress')
 							break
 						end
@@ -461,21 +478,25 @@ end)
 run(function()
 	local DownedESP
 	local DownedColor
-	local highlights = {}
+	
+	-- keyed by player, not by character: a respawn swaps the body under the same player, and a
+	-- character-keyed table would keep the old entry (and its Highlight) alive forever
+	local highlights = setmetatable({}, {__mode = 'k'})
 	
 	local function clearHighlights()
-		for character, highlight in highlights do
-			highlight:Destroy()
-			highlights[character] = nil
+		for _, record in highlights do
+			record.Highlight:Destroy()
 		end
+	
+		table.clear(highlights)
 	end
 	
 	local function updateHighlightColor()
 		local color = Color3.fromHSV(DownedColor.Hue, DownedColor.Sat, DownedColor.Value)
 	
-		for _, highlight in highlights do
-			highlight.FillColor = color
-			highlight.OutlineColor = color
+		for _, record in highlights do
+			record.Highlight.FillColor = color
+			record.Highlight.OutlineColor = color
 		end
 	end
 	
@@ -491,24 +512,27 @@ run(function()
 	
 				for _, plr in playersService:GetPlayers() do
 					local character = plr.Character
-					if character and character ~= localCharacter then
-						local highlight = highlights[character]
-						local downed = sentence.isDowned(plr)
+					local record = highlights[plr]
+					local downed = character ~= nil and character ~= localCharacter and sentence.isDowned(plr)
 	
-						if downed and not highlight then
-							highlight = Instance.new('Highlight')
-							highlight.FillColor = Color3.fromHSV(DownedColor.Hue, DownedColor.Sat, DownedColor.Value)
-							highlight.FillTransparency = 0.65
-							highlight.OutlineColor = highlight.FillColor
-							highlight.OutlineTransparency = 0
-							highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-							highlight.Adornee = character
-							highlight.Parent = character
-							highlights[character] = highlight
-						elseif not downed and highlight then
-							highlight:Destroy()
-							highlights[character] = nil
-						end
+					-- the body is gone, the player is no longer downed, or this is a respawn
+					if record and (not downed or record.Character ~= character) then
+						record.Highlight:Destroy()
+						highlights[plr] = nil
+						record = nil
+					end
+	
+					if downed and not record then
+						local color = Color3.fromHSV(DownedColor.Hue, DownedColor.Sat, DownedColor.Value)
+						local highlight = Instance.new('Highlight')
+						highlight.FillColor = color
+						highlight.FillTransparency = 0.65
+						highlight.OutlineColor = color
+						highlight.OutlineTransparency = 0
+						highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+						highlight.Adornee = character
+						highlight.Parent = character
+						highlights[plr] = {Character = character, Highlight = highlight}
 					end
 				end
 	
