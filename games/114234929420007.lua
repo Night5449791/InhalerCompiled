@@ -16,6 +16,15 @@ local entitylib = vape.Libraries.entity
 local targetinfo = vape.Libraries.targetinfo
 local whitelist = vape.Libraries.whitelist
 
+-- the option objects are created once when the gui loads and profiles only flip Enabled, so
+-- they are resolved here instead of hashing the same three names on every target check
+local friends = vape.Categories.Friends
+local useFriends = friends.Options['Use friends']
+local recolorFriends = friends.Options['Recolor visuals']
+local friendsColor = friends.Options['Friends color']
+local teamsByServer = vape.Settings.Modules.Options['Teams by server']
+local useTeamColor = vape.Settings.Modules.Options['Use team color']
+
 -- BloxStrike (universe 7633926880, this base is the root place 114234929420007) is a
 -- client authoritative 5v5 shooter that also rotates into a zombies survival mode:
 --   Workspace.Characters   every living model, players and bots alike (Folder Terrorists,
@@ -37,14 +46,14 @@ local bloxstrike = {
 }
 
 local function isFriend(plr, recolor)
-	if vape.Categories.Friends.Options['Use friends'].Enabled then
-		local friend = table.find(vape.Categories.Friends.ListEnabled, plr.Name) and true
-		if recolor then
-			friend = friend and vape.Categories.Friends.Options['Recolor visuals'].Enabled
-		end
-		return friend
+	if not useFriends.Enabled then return nil end
+
+	local friend = table.find(friends.ListEnabled, plr.Name) and true
+	if recolor then
+		friend = friend and recolorFriends.Enabled
 	end
-	return nil
+
+	return friend
 end
 
 local function notif(...)
@@ -62,25 +71,33 @@ function bloxstrike.team(obj)
 end
 
 -- the health of a player lives on both the player and his character, a bot only has the
--- character copy, and a pooled ragdoll keeps the values of the bot it belonged to
-function bloxstrike.health(obj)
+-- character copy, and a pooled ragdoll keeps the values of the bot it belonged to; the
+-- character is resolved once for both numbers because every health update asks for both
+local function vitals(obj)
 	local character = bloxstrike.character(obj)
-	local health = character and character:GetAttribute('Health') or nil
+	local isPlayer = typeof(obj) == 'Instance' and obj:IsA('Player')
+	local health = character and character:GetAttribute('Health')
+	local maxHealth = character and character:GetAttribute('MaxHealth')
+
 	if typeof(health) ~= 'number' then
-		health = typeof(obj) == 'Instance' and obj:IsA('Player') and obj:GetAttribute('Health') or nil
+		health = isPlayer and obj:GetAttribute('Health') or nil
 	end
 
-	return typeof(health) == 'number' and health or 0
+	if typeof(maxHealth) ~= 'number' then
+		maxHealth = isPlayer and obj:GetAttribute('MaxHealth') or nil
+	end
+
+	return typeof(health) == 'number' and health or 0, typeof(maxHealth) == 'number' and maxHealth or 100
+end
+
+function bloxstrike.health(obj)
+	local health = vitals(obj)
+	return health
 end
 
 function bloxstrike.maxHealth(obj)
-	local character = bloxstrike.character(obj)
-	local maxHealth = character and character:GetAttribute('MaxHealth') or nil
-	if typeof(maxHealth) ~= 'number' then
-		maxHealth = typeof(obj) == 'Instance' and obj:IsA('Player') and obj:GetAttribute('MaxHealth') or nil
-	end
-
-	return typeof(maxHealth) == 'number' and maxHealth or 100
+	local _, maxHealth = vitals(obj)
+	return maxHealth
 end
 
 function bloxstrike.dead(obj)
@@ -146,16 +163,38 @@ end
 -- ReplicatedStorage._PVS_CulledCharacters with its position and attributes left intact, so both
 -- containers are tracked and a character moving between them must keep its entity: dropping it
 -- on the move is what makes the esp and the aura appear and disappear on their own.
+-- Both containers are looked up on every PVS border crossing (measured at ~7 crossings a
+-- second on a full server), and FindFirstChild is a children scan, so the instance is kept
+-- and only re-resolved when the cached one has been removed from the tree (map change).
+local charactersFolder
+local culledFolder
+
+local function getCharacters()
+	local folder = charactersFolder
+	if folder and folder.Parent then return folder end
+
+	charactersFolder = workspace:FindFirstChild('Characters')
+	return charactersFolder
+end
+
+local function getCulled()
+	local folder = culledFolder
+	if folder and folder.Parent then return folder end
+
+	culledFolder = replicatedStorage:FindFirstChild('_PVS_CulledCharacters')
+	return culledFolder
+end
+
 local function hosted(char)
-	local characters = workspace:FindFirstChild('Characters')
+	local characters = getCharacters()
 	if characters and char:IsDescendantOf(characters) then return true end
 
-	local culled = replicatedStorage:FindFirstChild('_PVS_CulledCharacters')
+	local culled = getCulled()
 	return culled ~= nil and char:IsDescendantOf(culled)
 end
 
 local function rendered(char)
-	local characters = workspace:FindFirstChild('Characters')
+	local characters = getCharacters()
 	return characters ~= nil and char:IsDescendantOf(characters)
 end
 
@@ -186,6 +225,16 @@ local function unpark(char)
 	entitylib.Events.EntityAdded:Fire(entity)
 end
 
+-- the same disconnect pass runs when a parked entity is thrown away and when the library
+-- stops, so it is one function instead of two copies
+local function dropConnections(entity)
+	for _, connection in entity.Connections do
+		connection:Disconnect()
+	end
+
+	table.clear(entity.Connections)
+end
+
 local function discard(char)
 	local entity = entitylib.Culled[char]
 	if not entity then
@@ -194,11 +243,7 @@ local function discard(char)
 	end
 
 	entitylib.Culled[char] = nil
-	for _, connection in entity.Connections do
-		connection:Disconnect()
-	end
-
-	table.clear(entity.Connections)
+	dropConnections(entity)
 end
 
 run(function()
@@ -206,11 +251,7 @@ run(function()
 
 	entitylib.stop = function()
 		for _, entity in entitylib.Culled do
-			for _, connection in entity.Connections do
-				connection:Disconnect()
-			end
-
-			table.clear(entity.Connections)
+			dropConnections(entity)
 		end
 
 		table.clear(entitylib.Culled)
@@ -282,8 +323,10 @@ watchContainer = function(container)
 			return
 		end
 
-		task.wait(0.1)
-		registerCharacter(child)
+		-- the rig parts are a moment behind the reparent, but the signal thread does not have
+		-- to sit through it: the unpark below is independent of the rig being complete
+		task.delay(0.1, registerCharacter, child)
+
 		if rendered(child) then
 			-- coming back cancels a park that was still waiting out the debounce
 			ParkTokens[child] = nil
@@ -333,9 +376,11 @@ end
 -- stand in that answers the two fields the entity library and the render modules read
 local function standInHumanoid(char, plr)
 	local target = plr or char
+	local health, maxHealth = vitals(target)
+
 	return {
-		Health = bloxstrike.health(target),
-		MaxHealth = bloxstrike.maxHealth(target),
+		Health = health,
+		MaxHealth = maxHealth,
 		GetState = function()
 			return Enum.HumanoidStateType.Running
 		end,
@@ -346,22 +391,9 @@ local function standInHumanoid(char, plr)
 	}
 end
 
-entitylib.getUpdateConnections = function(entity)
-	local char, plr = entity.Character, entity.Player
-	local connections = {
-		char:GetAttributeChangedSignal('Health'),
-		char:GetAttributeChangedSignal('Dead'),
-		char:GetAttributeChangedSignal('Team')
-	}
-
-	if plr then
-		table.insert(connections, plr:GetAttributeChangedSignal('Health'))
-		table.insert(connections, plr:GetAttributeChangedSignal('Dead'))
-		table.insert(connections, plr:GetAttributeChangedSignal('Team'))
-	end
-
-	return connections
-end
+-- entitylib.getUpdateConnections is not overridden: the only caller is the library's own
+-- addEntity, which this file replaces below, so the signals this product needs are the ones
+-- addEntity connects itself
 
 entitylib.addEntity = function(char, plr, teamfunc, spawntime)
 	if not char then return end
@@ -379,15 +411,16 @@ entitylib.addEntity = function(char, plr, teamfunc, spawntime)
 		local humanoid = char:FindFirstChildOfClass('Humanoid')
 		local standIn = humanoid == nil and standInHumanoid(char, plr) or nil
 		local target = plr or char
+		local health, maxHealth = vitals(target)
 		local entity = {
 			Character = char,
 			Connections = {},
-			Health = bloxstrike.health(target),
+			Health = health,
 			Head = head,
 			HipHeight = 3,
 			Humanoid = humanoid or standIn,
 			HumanoidRootPart = root,
-			MaxHealth = bloxstrike.maxHealth(target),
+			MaxHealth = maxHealth,
 			NPC = plr == nil,
 			Player = plr,
 			RootPart = root,
@@ -413,8 +446,10 @@ entitylib.addEntity = function(char, plr, teamfunc, spawntime)
 			entity.Targetable = entitylib.targetCheck(entity)
 
 			local function updateHealth()
-				entity.Health = bloxstrike.health(target)
-				entity.MaxHealth = bloxstrike.maxHealth(target)
+				local health, maxHealth = vitals(target)
+				entity.Health = health
+				entity.MaxHealth = maxHealth
+
 				if standIn then
 					standIn.Health = entity.Health
 					standIn.MaxHealth = entity.MaxHealth
@@ -483,7 +518,7 @@ entitylib.targetCheck = function(entity)
 	-- mirror the game's own isEnemy (Controllers/ESPController): Deathmatch is free-for-all, and
 	-- a target whose team is neither Terrorists nor Counter-Terrorists (nil during warmup) is not
 	-- a valid enemy either
-	if vape.Settings.Modules.Options['Teams by server'].Enabled then
+	if teamsByServer.Enabled then
 		if workspace:GetAttribute('Gamemode') == 'Deathmatch' then return true end
 
 		local myTeam = bloxstrike.team(lplr)
@@ -547,12 +582,12 @@ entitylib.start = function()
 		end)
 	}
 
-	local characters = workspace:FindFirstChild('Characters')
+	local characters = getCharacters()
 	if characters then
 		watchContainer(characters)
 	end
 
-	local culled = replicatedStorage:FindFirstChild('_PVS_CulledCharacters')
+	local culled = getCulled()
 	if culled then
 		watchContainer(culled)
 	else
@@ -591,9 +626,9 @@ end
 
 run(function()
 	entitylib.getEntityColor = function(ent)
-		if not (ent.Player and vape.Settings.Modules.Options['Use team color'].Enabled) then return end
+		if not (ent.Player and useTeamColor.Enabled) then return end
 		if isFriend(ent.Player, true) then
-			return Color3.fromHSV(vape.Categories.Friends.Options['Friends color'].Hue, vape.Categories.Friends.Options['Friends color'].Sat, vape.Categories.Friends.Options['Friends color'].Value)
+			return Color3.fromHSV(friendsColor.Hue, friendsColor.Sat, friendsColor.Value)
 		end
 
 		local team = ent.Team or bloxstrike.team(ent.Player)
@@ -627,8 +662,8 @@ local Mode
 local HitChance
 local HeadshotChance
 local Range
-local Wallbang
 local ShowTarget
+local AutoFire
 local OriginalCreate
 local rand = Random.new()
 
@@ -642,6 +677,9 @@ run(function()
 	local suc, Bullet = pcall(require, module)
 	if not suc or typeof(Bullet.create) ~= 'function' then return end
 
+	local entityMouse = entitylib.EntityMouse
+	local entityPosition = entitylib.EntityPosition
+
 	-- the shot packet is built on the client: Weapon picks the muzzle, asks Bullet:create for
 	-- one {Origin, Direction, Distance, Hits} per bullet and ships Direction to the server
 	-- through Inventory.ShootWeapon, which raycasts along it. Rewriting Direction where the
@@ -654,7 +692,7 @@ run(function()
 
 		local targetPart = rand:NextNumber(0, 100) < HeadshotChance.Value and 'Head' or 'RootPart'
 		local fromMouse = Mode.Value == 'Mouse'
-		local entity = entitylib[fromMouse and 'EntityMouse' or 'EntityPosition']({
+		local entity = (fromMouse and entityMouse or entityPosition)({
 			Part = targetPart,
 			Range = Range.Value,
 			MouseOrigin = fromMouse and gameCamera.ViewportSize / 2 or nil,
@@ -669,7 +707,94 @@ run(function()
 	-- reused every shot so the wall check does not allocate a fresh ignore table
 	local ignore = {}
 
-	local function hookBullet(self, aimingOptions, isAiming)
+	-- Autofire pulls the trigger through the weapon's own shoot(): it runs the ammo,
+	-- cooldown and sequence bookkeeping a mouse1 press runs, so the packet is the same one
+	-- a real click produces and SilentAim still rewrites Direction inside Bullet.create.
+	local weapon, hookBullet
+
+	-- Bullet.create is handed the weapon's own bullet instance, which points back at the
+	-- weapon, so a real shot refreshes the reference without a collector scan
+	local function findWeapon()
+		if typeof(getgc) ~= 'function' then return end
+
+		for _, v in getgc(true) do
+			if type(v) == 'table' and rawget(v, 'IsEquipped') == true and type(rawget(v, 'Identifier')) == 'string' then
+				return v
+			end
+		end
+	end
+
+	local function currentWeapon()
+		local active = weapon
+		if active and rawget(active, 'IsEquipped') == true and rawget(active, 'IsDestroyed') ~= true then
+			return active
+		end
+
+		-- the inventory rebuilds the weapon on a respawn or a loadout change
+		weapon = findWeapon()
+		return weapon
+	end
+
+	-- the trigger only goes down when there is something to hit: the closest target in
+	-- range whose body the bullet can reach, wood only like the shot itself
+	local gateIgnore = {}
+
+	local function reachable()
+		local localEntity = entitylib.character
+		if not (entitylib.isAlive and localEntity) then return false end
+
+		local root = localEntity.RootPart
+		if not root then return false end
+
+		local origin = root.Position
+		local entity = entityPosition({
+			Part = 'RootPart',
+			Range = Range.Value,
+			Origin = origin,
+			Players = Targets.Players.Enabled,
+			NPCs = Targets.NPCs.Enabled
+		})
+
+		if not entity or not entity.RootPart then return false end
+
+		gateIgnore[1] = localEntity.Character
+		gateIgnore[2] = entity.Character
+
+		-- the trigger only goes down on a clear line
+		return entitylib.Wallcheck(origin, entity.RootPart.Position, gateIgnore) == nil
+	end
+
+	-- the look-for-a-target pass is the expensive half (an entity sweep and a raycast), so
+	-- it runs on its own clock while the trigger itself is pulled every frame
+	local GATE_SECONDS = 0.15
+
+	local function autoFireLoop()
+		local gateUntil, gateOk = 0, false
+
+		repeat
+			task.wait()
+
+			-- the hook being ours is what proves this loop still belongs to a live module:
+			-- a re-inject installs its own, and this copy then stops shooting for good
+			if AutoFire.Enabled and SilentAim.Enabled and Bullet.create == hookBullet then
+				local now = os.clock()
+				if now >= gateUntil then
+					gateOk = reachable()
+					gateUntil = now + GATE_SECONDS
+				end
+
+				local active = gateOk and currentWeapon()
+				if active then
+					pcall(active.shoot, active)
+				end
+			end
+		until not AutoFire.Enabled
+	end
+
+	hookBullet = function(self, aimingOptions, isAiming)
+		-- every real shot hands the weapon over, so the autofire reference survives a respawn
+		weapon = rawget(self, 'Weapon') or weapon
+
 		local bullet = OriginalCreate(self, aimingOptions, isAiming)
 		if not SilentAim.Enabled or type(bullet) ~= 'table' then return bullet end
 
@@ -682,10 +807,8 @@ run(function()
 		local position = part.Position
 		ignore[1] = entity.Character
 
-		-- Wallbang only lets the shot through wood (penetrable) surfaces; metal/stone still
-		-- block, and with Wallbang off only a clear line of sight shoots
-		local hit = entitylib.Wallcheck(origin, position, ignore)
-		if hit and not (Wallbang.Enabled and (hit.Material == Enum.Material.Wood or hit.Material == Enum.Material.WoodPlanks)) then
+		-- a clear line only: anything the ray hits keeps the shot where the player pointed it
+		if entitylib.Wallcheck(origin, position, ignore) then
 			return bullet
 		end
 
@@ -782,13 +905,18 @@ run(function()
 			return val == 1 and 'stud' or 'studs'
 		end
 	})
-	Wallbang = SilentAim:CreateToggle({
-		Name = 'Wallbang',
-		Default = true,
-		Tooltip = 'Redirects the shot through wood walls only'
-	})
 	ShowTarget = SilentAim:CreateToggle({
 		Name = 'Show target info'
+	})
+	AutoFire = SilentAim:CreateToggle({
+		Name = 'Auto Fire',
+		Tooltip = 'Fires while a target is in range; the weapon keeps its own ammo and fire rate',
+		Function = function(callback)
+			if not callback then return end
+
+			weapon = weapon or findWeapon()
+			task.spawn(autoFireLoop)
+		end
 	})
 end)
 
@@ -878,18 +1006,15 @@ run(function()
 	-- a smoke grenade is a VoxelSmoke_ folder in Workspace.Debris holding SmokeVoxel parts, which is
 	-- also the two names the game's own aim assist and mobile auto shoot use to test line of sight
 	local function hideSmoke(instance)
-		if smokeSaved[instance] then
-			return
-		end
-	
 		-- named first: Debris churns with pooled ragdolls, so this runs for far more parts than the
-		-- clouds it is after and the name is the cheapest thing to reject on
-		if instance.Name ~= 'SmokeVoxel' or not instance:IsA('BasePart') then
+		-- clouds it is after and the name is the cheapest thing to reject on. A plain find keeps the
+		-- prefix test allocation free, where sub would build a string per part it rejects.
+		if instance.Name ~= 'SmokeVoxel' or smokeSaved[instance] or not instance:IsA('BasePart') then
 			return
 		end
 	
-		local folder = instance.Parent
-		if not folder or folder.Name:sub(1, 11) ~= 'VoxelSmoke_' then
+		local parent = instance.Parent
+		if not parent or parent.Name:find('VoxelSmoke_', 1, true) ~= 1 then
 			return
 		end
 	
