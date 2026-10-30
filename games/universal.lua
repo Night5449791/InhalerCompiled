@@ -1070,7 +1070,6 @@ run(function()
 			local clickgui = vape.gui.ScaledGui.ClickGui
 			local mouseScale
 			if not cameraMode then
-				-- hoisted so the per-frame path never touches UserSettings or allocates a new scale vector
 				mouseScale = moveConst * UserSettings():GetService('UserGameSettings').MouseSensitivity
 			end
 	
@@ -1113,7 +1112,6 @@ run(function()
 				local alpha = math.min(Speed.Value * dt, 1)
 	
 				if cameraMode then
-					-- mobile method - only the local camera CFrame is written, no mouse input at all
 					local blended = camCF.LookVector:Lerp(target, alpha)
 					local magnitude = blended.Magnitude
 					if magnitude < 0.01 then return end
@@ -1134,7 +1132,6 @@ run(function()
 			end
 	
 			if cameraMode then
-				-- the default camera scripts write at RenderPriority.Camera, so step right after them
 				runService:BindToRenderStep('InhalerAimAssist', Enum.RenderPriority.Camera.Value + 1, step)
 				AimAssist:Clean(function()
 					runService:UnbindFromRenderStep('InhalerAimAssist')
@@ -8135,9 +8132,6 @@ run(function()
 				if Group.Value == '' or Role.Value == '' then
 					local placeinfo = {Creator = {CreatorTargetId = tonumber(Group.Value)}}
 					if Group.Value == '' then
-						-- the engine only has the Async method now. A client that lacks it, or
-						-- a lookup that fails, must fall through to the "no group detected"
-						-- path below instead of erroring out of the module
 						local ok, info = pcall(function()
 							return marketplaceService:GetProductInfoAsync(game.PlaceId)
 						end)
@@ -8147,8 +8141,6 @@ run(function()
 						end
 	
 						if placeinfo.Creator.CreatorType ~= 'Group' then
-							-- a failed lookup leaves no Description: scan only when there is text,
-							-- then let the group check below report the failure
 							local description = type(placeinfo.Description) == 'string' and placeinfo.Description or ''
 							local desc = description:split('\n')
 							for _, str in desc do
@@ -8302,8 +8294,6 @@ run(function()
 	local skip = {}
 	local scanToken = 0
 	
-	-- the part-name list is checked for every descendant added, so it is turned into a hash set
-	-- instead of a linear table.find scan; rebuilt whenever the module is toggled on
 	local function rebuildSkip()
 		table.clear(skip)
 		for _, name in List.ListEnabled do
@@ -8312,11 +8302,8 @@ run(function()
 	end
 	
 	local function modifyPart(part)
-		-- a part is only ever recorded once; a reparent re-fires DescendantAdded and re-writing the
-		-- same property on every one of those would be wasted work
 		if modified[part] then return end
 	
-		-- remember a non-zero modifier so disabling restores it instead of flattening it to 0
 		local current = part.LocalTransparencyModifier
 		if current ~= 0 then
 			originals[part] = current
@@ -8326,8 +8313,6 @@ run(function()
 		part.LocalTransparencyModifier = 0.5
 	end
 	
-	-- sweeping every BasePart of a large map in one frame hitches, so the sweep is spread over
-	-- frames and cancelled through the token when the module is toggled off mid-sweep
 	local function startScan()
 		scanToken = scanToken + 1
 		local token = scanToken

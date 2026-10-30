@@ -1231,7 +1231,6 @@ run(function()
 			local cameraMode = AimAssistMethod.Value == 'Camera'
 			local mouseScale
 			if not cameraMode then
-				-- hoisted so the per-frame path never touches UserSettings or allocates a new scale vector
 				mouseScale = moveConst * UserSettings():GetService('UserGameSettings').MouseSensitivity
 			end
 	
@@ -1269,7 +1268,6 @@ run(function()
 				local camCF = gameCamera.CFrame
 	
 				if cameraMode then
-					-- mobile method - only the local camera CFrame is written, no mouse input at all
 					gameCamera.CFrame = camCF:Lerp(CFrame.lookAt(camCF.Position, root.Position), alpha)
 				else
 					local origin = camCF.Position

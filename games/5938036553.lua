@@ -477,7 +477,6 @@ run(function()
 				targetinfo.Targets[ent] = os.clock() + 1
 	
 				if cameraMode then
-					-- mobile method - only the local camera CFrame is written, no game aim state or mouse input
 					local camCF = gameCamera.CFrame
 					local blended = camCF.LookVector:Lerp((calc - camCF.Position).Unit, math.min(Speed.Value * dt, 1))
 					local magnitude = blended.Magnitude
@@ -496,13 +495,11 @@ run(function()
 			end
 	
 			if cameraMode then
-				-- the default camera scripts write at RenderPriority.Camera, so step right after them
 				runService:BindToRenderStep('InhalerAimAssist', Enum.RenderPriority.Camera.Value + 1, step)
 				AimAssist:Clean(function()
 					runService:UnbindFromRenderStep('InhalerAimAssist')
 				end)
 			else
-				-- kept on the scheduler thread, exe_set is a game function that expects it
 				repeat
 					local dt = task.wait()
 					if not AimAssist.Enabled then break end
