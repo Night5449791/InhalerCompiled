@@ -561,13 +561,13 @@ run(function()
 		end
 	})
 	CircleColor = AimAssist:CreateColorSlider({
-		Name = 'Circle Color', 
+		Name = 'Circle Color',
 		Function = function(hue, sat, val)
 			if CircleObject then
 				CircleObject.Color = Color3.fromHSV(hue, sat, val)
 			end
-		end, 
-		Darker = true, 
+		end,
+		Darker = true,
 		Visible = false
 	})
 	CircleTransparency = AimAssist:CreateSlider({
@@ -585,13 +585,13 @@ run(function()
 		Visible = false
 	})
 	CircleFilled = AimAssist:CreateToggle({
-		Name = 'Circle Filled', 
+		Name = 'Circle Filled',
 		Function = function(callback)
 			if CircleObject then
 				CircleObject.Filled = callback
 			end
-		end, 
-		Darker = true, 
+		end,
+		Darker = true,
 		Visible = false
 	})
 	

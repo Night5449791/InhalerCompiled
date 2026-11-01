@@ -25,17 +25,6 @@ local friendsColor = friends.Options['Friends color']
 local teamsByServer = vape.Settings.Modules.Options['Teams by server']
 local useTeamColor = vape.Settings.Modules.Options['Use team color']
 
--- BloxStrike (universe 7633926880, this base is the root place 114234929420007) is a
--- client authoritative 5v5 shooter that also rotates into a zombies survival mode:
---   Workspace.Characters   every living model, players and bots alike (Folder Terrorists,
---                          Folder Counter-Terrorists, Folder Hostages, plus loose models)
---   Workspace.Debris       recycled ragdolls that still carry the Bot attribute
---   NetworkRemotes         Inventory.ShootWeapon / Inventory.BuyMenuPurchase / Melee.MeleeAttack
---   Remotes.BAC            the anti cheat endpoint
--- Players and bot models store their side in a 'Team' attribute ('Counter-Terrorists' or
--- 'Terrorists') and their health in 'Health' / 'MaxHealth' / 'Dead' attributes. There is no
--- Team service at all, and remote characters are presentation rigs without a Humanoid, so
--- both the team gate and the entity library have to read the attributes instead.
 local bloxstrike = {
 	CharacterRemote = nil,
 	Inventory = nil,
@@ -158,14 +147,8 @@ function bloxstrike.send(section, name, packet)
 	return suc
 end
 
--- the client only keeps the characters it currently renders in Workspace.Characters. Every
--- character it culls (behind you, across the map, or dead) is reparented into
--- ReplicatedStorage._PVS_CulledCharacters with its position and attributes left intact, so both
--- containers are tracked and a character moving between them must keep its entity: dropping it
--- on the move is what makes the esp and the aura appear and disappear on their own.
--- Both containers are looked up on every PVS border crossing (measured at ~7 crossings a
--- second on a full server), and FindFirstChild is a children scan, so the instance is kept
--- and only re-resolved when the cached one has been removed from the tree (map change).
+-- a culled character is reparented with its attributes intact, so both containers are tracked
+-- and a character moving between them keeps its entity
 local charactersFolder
 local culledFolder
 
@@ -198,11 +181,8 @@ local function rendered(char)
 	return characters ~= nil and char:IsDescendantOf(characters)
 end
 
--- a parked character is one the game stopped simulating: its rig is anchored in the PVS pool and
--- no new transform ever arrives, so drawing it would only paint a frozen corpse of a box. The
--- entity is kept out of entitylib.List (esp, aura and aim stop seeing it) but stays alive with
--- its connections, so the same object is put back when the game loads that part of the map again.
--- This is always on: culled characters are never drawn at their last known position.
+-- a parked character leaves entitylib.List but keeps its connections, so it comes back as the
+-- same object when the game loads that part of the map again
 entitylib.Culled = {}
 
 local function park(char)
@@ -680,11 +660,8 @@ run(function()
 	local entityMouse = entitylib.EntityMouse
 	local entityPosition = entitylib.EntityPosition
 
-	-- the shot packet is built on the client: Weapon picks the muzzle, asks Bullet:create for
-	-- one {Origin, Direction, Distance, Hits} per bullet and ships Direction to the server
-	-- through Inventory.ShootWeapon, which raycasts along it. Rewriting Direction where the
-	-- bullet object is returned is therefore enough to move the real shot, without touching
-	-- the packet layout or the sequence counters the server checks.
+	-- rewriting Direction where the bullet is returned moves the real shot without touching the
+	-- packet layout or the sequence counters the server checks
 	local function getTarget(origin)
 		-- a failed roll leaves the shot untouched, so the aim lands as often as the chance
 		-- allows and the misses look like ordinary bad aim
@@ -820,10 +797,7 @@ run(function()
 		return bullet
 	end
 
-	-- a re-inject leaves the previous chunk alive, and a hook it left installed would otherwise be
-	-- captured as the "original" and wrapped a second time, which ends with create calling a
-	-- function that no longer exists. The original and the last hook are kept in shared, so a
-	-- later copy of this file can still tell them apart.
+	-- the original and the last hook are kept in shared so a re-inject cannot wrap its own hook
 	local function installHook()
 		if Bullet.create == hookBullet then return end
 

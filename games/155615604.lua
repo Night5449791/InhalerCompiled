@@ -3112,13 +3112,7 @@ run(function()
 end)
 
 run(function()
-	-- Chat commands for the prison products. The shape is the same everywhere in this file:
-	-- one named handler per command, one entry per command name in `commands`, one toggle per
-	-- command family in `toggles`. A handler only runs while its toggle is on.
-	--
-	-- Other players' chat is listened to only while the module runs. A friend may drive these
-	-- commands when ShareCommands is on, a private member (whitelist level above zero) always
-	-- may, and this client's own chat and the command box are never gated.
+	-- a friend may drive these commands while ShareCommands is on, a private member always may
 	
 	local ChatCommand
 	local TARGET_COLOR = Color3.new(1, 0, 0)
@@ -3573,12 +3567,6 @@ run(function()
 		openDiscordInvite(DISCORD_CODE)
 		notif('ChatCommand', 'Copied the discord invite.', 5)
 	end
-	
-	-- ============================================================================
-	-- commands
-	-- every command name points at one handler; the long names are the same handler as
-	-- their short form, so the table stays flat and needs no aliasing pass
-	-- ============================================================================
 	
 	local commands = {
 		tp = handleTP,
@@ -4294,6 +4282,27 @@ run(function()
 		end
 	end
 	
+	local function playerRemoving(plr)
+		if plr == lplr then return end
+	
+		for _, other in playersService:GetPlayers() do
+			if other ~= plr and (other.Name == plr.Name or other.DisplayName == plr.DisplayName) then
+				return
+			end
+		end
+	
+		if not whitelist.customtags[plr.Name] and not tempTargets[plr.Name] then return end
+	
+		local reason = getCheaterReason(plr)
+	
+		whitelist.customtags[plr.Name] = nil
+		tempTargets[plr.Name] = nil
+	
+		if reason and cheaterOptions.Notifications.Enabled then
+			notify('Logged skid left: '..plr.DisplayName..' ('..reason..')', 15)
+		end
+	end
+	
 	local function autoAddCheater(plr, flagType)
 		if not cheaterOptions.AutomaticAdd.Enabled then return end
 		if flagType ~= 'invalid animation' and flagType:sub(1, 13) ~= 'invalid state'
@@ -4330,6 +4339,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				CheaterDetector:Clean(playersService.PlayerAdded:Connect(playerAdded))
+				CheaterDetector:Clean(playersService.PlayerRemoving:Connect(playerRemoving))
 				CheaterDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(autoAddCheater))
 	
 				cheaterOptions.Teleports.Object.Visible = cheaterOptions.AutomaticAdd.Enabled
