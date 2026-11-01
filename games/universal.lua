@@ -1621,44 +1621,67 @@ run(function()
 			end
 
 			if callback then
-				hookmethod = Hooks[Method.Value]
-				didOth = OthHook.Enabled
-
-				if FunctionHook.Enabled or hookmethod.NoNamecall then
-					oldhook = (OthHook.Enabled and oth.hook or hookfunction)(hookmethod.Hook, function(...)
-						if checkcaller() then
-							return oldhook(...)
+				if Method.Value == 'TaskScheduler' then
+					local old
+					SilentAim:Clean(runService.PostSimulation:Connect(function()
+						local entity, targetPart = getTarget(gameCamera.CFrame.Position)
+						if entity then
+							old = gameCamera.CFrame
+							gameCamera.CFrame = CFrame.lookAt(gameCamera.CFrame.Position, targetPart.Position)
 						end
+					end))
 
-						local caller = getcallingscript()
-						if typeof(caller) == 'Instance' and caller then
-							if table.find(IgnoredScripts.ListEnabled, tostring(caller)) then
-								return oldnamecall(...)
-							end
-						end
-
-						if hookmethod.NoNamecall then
-							local args = {...}
-							local data = hookmethod.Function(args)
-							if data then
-								return unpack(data)
-							end
-
-							return oldhook(unpack(args))
-						else
-							local self, args = ..., {select(2, ...)}
-							local data = hookmethod.Function(args)
-							if data then
-								return unpack(data)
-							end
-
-							return oldhook(self, unpack(args))
+					local key = httpService:GenerateGUID(false)
+					runService:BindToRenderStep(key, 0, function()
+						if old then
+							gameCamera.CFrame = old
+							old = nil
 						end
 					end)
-				end
 
-				if not hookmethod.NoNamecall then
-					oldnamecall = OthHook.Enabled and oth.hook(getrawmetatable(game).__namecall, namecallHook) or hookmetamethod(game, '__namecall', namecallHook)
+					SilentAim:Clean(function()
+						runService:UnbindFromRenderStep(key)
+					end)
+				else
+					hookmethod = Hooks[Method.Value]
+					didOth = OthHook.Enabled
+
+					if FunctionHook.Enabled or hookmethod.NoNamecall then
+						oldhook = (OthHook.Enabled and oth.hook or hookfunction)(hookmethod.Hook, function(...)
+							if checkcaller() then
+								return oldhook(...)
+							end
+
+							local caller = getcallingscript()
+							if typeof(caller) == 'Instance' and caller then
+								if table.find(IgnoredScripts.ListEnabled, tostring(caller)) then
+									return oldnamecall(...)
+								end
+							end
+
+							if hookmethod.NoNamecall then
+								local args = {...}
+								local data = hookmethod.Function(args)
+								if data then
+									return unpack(data)
+								end
+
+								return oldhook(unpack(args))
+							else
+								local self, args = ..., {select(2, ...)}
+								local data = hookmethod.Function(args)
+								if data then
+									return unpack(data)
+								end
+
+								return oldhook(self, unpack(args))
+							end
+						end)
+					end
+
+					if not hookmethod.NoNamecall then
+						oldnamecall = OthHook.Enabled and oth.hook(getrawmetatable(game).__namecall, namecallHook) or hookmetamethod(game, '__namecall', namecallHook)
+					end
 				end
 			else
 				if oldhook then
@@ -1733,7 +1756,7 @@ run(function()
 	})
 	Method = SilentAim:CreateDropdown({
 		Name = 'Method',
-		List = {'FindPartOnRay', 'FindPartOnRayWithIgnoreList', 'FindPartOnRayWithWhitelist', 'ScreenPointToRay', 'ViewportPointToRay', 'Raycast', 'Ray'},
+		List = {'FindPartOnRay', 'FindPartOnRayWithIgnoreList', 'FindPartOnRayWithWhitelist', 'ScreenPointToRay', 'ViewportPointToRay', 'Raycast', 'Ray', 'TaskScheduler'},
 		Function = function(val)
 			if SilentAim.Enabled then
 				SilentAim:Toggle()
@@ -5217,30 +5240,81 @@ end)
 
 run(function()
 	local Health
+	local Size
+	local Stroke
+	local Offset
+	local FontOption
+	local label
 	
 	Health = vape.Categories.Render:CreateModule({
 		Name = 'Health',
 		Function = function(callback)
 			if callback then
-				local label = Instance.new('TextLabel')
+				label = Instance.new('TextLabel')
 				label.Size = UDim2.fromOffset(100, 20)
-				label.Position = UDim2.new(0.5, 6, 0.5, 30)
+				label.Position = UDim2.new(0.5, 6, 0.5, Offset.Value)
 				label.AnchorPoint = Vector2.new(0.5, 0)
 				label.BackgroundTransparency = 1
 				label.Text = '100 ❤️'
-				label.TextSize = 18
-				label.Font = Enum.Font.Arial
+				label.TextSize = Size.Value
+				label.TextStrokeTransparency = Stroke.Value
+				label.FontFace = FontOption.Value
 				label.Parent = vape.gui
 				Health:Clean(label)
-				
+	
 				repeat
 					label.Text = entitylib.isAlive and math.round(entitylib.character.Humanoid.Health)..' ❤️' or ''
 					label.TextColor3 = entitylib.isAlive and Color3.fromHSV((entitylib.character.Humanoid.Health / entitylib.character.Humanoid.MaxHealth) / 2.8, 0.86, 1) or Color3.new()
 					task.wait()
 				until not Health.Enabled
+			else
+				label = nil
 			end
 		end,
 		Tooltip = 'Displays your health in the center of your screen.'
+	})
+	FontOption = Health:CreateFont({
+		Name = 'Font',
+		Blacklist = 'Arial',
+		Function = function(value)
+			if label then
+				label.FontFace =value
+			end
+		end
+	})
+	Size = Health:CreateSlider({
+		Name = 'Size',
+		Min = 1,
+		Max = 30,
+		Default = 18,
+		Function = function(value)
+			if label then
+				label.TextSize = value
+			end
+		end
+	})
+	Stroke = Health:CreateSlider({
+		Name = 'Stroke Transparency',
+		Function = function(value)
+			if label then
+				label.TextStrokeTransparency = value
+			end
+		end,
+		Default = 1,
+		Min = 0,
+		Max = 1,
+		Decimal = 10
+	})
+	Offset = Health:CreateSlider({
+		Name = 'Y Offset',
+		Min = 0,
+		Max = 100,
+		Default = 30,
+		Function = function(value)
+			if label then
+				label.Position = UDim2.new(0.5, 6, 0.5, value)
+			end
+		end
 	})
 end)
 
@@ -5257,6 +5331,7 @@ run(function()
 	local Scale
 	local FontOption
 	local Teammates
+	local FriendBorder
 	local DistanceCheck
 	local DistanceLimit
 	local Strings, Sizes, Reference = {}, {}, {}
@@ -5299,6 +5374,14 @@ run(function()
 			nametag.Text = Strings[ent]
 			nametag.TextColor3 = entitylib.getEntityColor(ent) or Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
 			nametag.RichText = true
+	
+			-- a friendly entity gets an outline over the whole tag, so it reads at a
+			-- glance next to the ones that are fair game
+			if FriendBorder.Enabled and not ent.Targetable then
+				nametag.BorderSizePixel = 2
+				nametag.BorderColor3 = Color3.new(0, 1, 0)
+			end
+	
 			nametag.Parent = Folder
 			Reference[ent] = nametag
 		end,
@@ -5643,6 +5726,16 @@ run(function()
 		Default = true,
 		Tooltip = 'Hides teammates & non targetable entities'
 	})
+	FriendBorder = NameTags:CreateToggle({
+		Name = 'Friendly Border',
+		Function = function()
+			if NameTags.Enabled then
+				NameTags:Toggle()
+				NameTags:Toggle()
+			end
+		end,
+		Tooltip = 'Apply an outline over the entire nametag signaling a friendly entity.'
+	})
 	DrawingToggle = NameTags:CreateToggle({
 		Name = 'Drawing',
 		Function = function()
@@ -5676,6 +5769,7 @@ run(function()
 	local Mesh
 	local Texture
 	local Hide
+	local Offsets = {}
 	local Rots = {}
 	local models = {}
 	
@@ -5693,7 +5787,7 @@ run(function()
 		local root = ent.RootPart
 		local part = Instance.new('Part')
 		part.Size = Vector3.new(3, 3, 3)
-		part.CFrame = root.CFrame * CFrame.Angles(math.rad(Rots[1].Value), math.rad(Rots[2].Value), math.rad(Rots[3].Value))
+		part.CFrame = root.CFrame * CFrame.new(Offsets[1].Value, Offsets[2].Value, Offsets[3].Value) * CFrame.Angles(math.rad(Rots[1].Value), math.rad(Rots[2].Value), math.rad(Rots[3].Value))
 		part.CanCollide = false
 		part.CanQuery = false
 		part.Massless = true
@@ -5767,6 +5861,22 @@ run(function()
 			end
 		end
 	})
+	for _, name in {'Offset X', 'Offset Y', 'Offset Z'} do
+		table.insert(Offsets, PlayerModel:CreateSlider({
+			Name = name,
+			Min = -2,
+			Max = 2,
+			Default = 0,
+			Decimal = 10,
+			Function = function(val)
+				for root, part in models do
+					part.WeldConstraint.Enabled = false
+					part.CFrame = root.CFrame * CFrame.new(Offsets[1].Value, Offsets[2].Value, Offsets[3].Value) * CFrame.Angles(math.rad(Rots[1].Value), math.rad(Rots[2].Value), math.rad(Rots[3].Value))
+					part.WeldConstraint.Enabled = true
+				end
+			end
+		}))
+	end
 	for _, name in {'Rotation X', 'Rotation Y', 'Rotation Z'} do
 		table.insert(Rots, PlayerModel:CreateSlider({
 			Name = name,
@@ -5775,7 +5885,7 @@ run(function()
 			Function = function(val)
 				for root, part in models do
 					part.WeldConstraint.Enabled = false
-					part.CFrame = root.CFrame * CFrame.Angles(math.rad(Rots[1].Value), math.rad(Rots[2].Value), math.rad(Rots[3].Value))
+					part.CFrame = root.CFrame * CFrame.new(Offsets[1].Value, Offsets[2].Value, Offsets[3].Value) * CFrame.Angles(math.rad(Rots[1].Value), math.rad(Rots[2].Value), math.rad(Rots[3].Value))
 					part.WeldConstraint.Enabled = true
 				end
 			end
@@ -9108,6 +9218,7 @@ run(function()
 	local Disguise
 	local Mode
 	local IDBox
+	local EmoteList
 	local cloned = {}
 	
 	local function itemAdded(obj, manual)
@@ -9182,7 +9293,7 @@ run(function()
 			elseif description then
 				description:Destroy()
 			end
-		else
+		elseif Mode.Value == 'Animation' then
 			local success, data = pcall(function()
 				data = marketplaceService:GetProductInfoAsync(IDBox.Value == '' and 43 or tonumber(IDBox.Value), Enum.InfoType.Bundle)
 			end)
@@ -9210,6 +9321,19 @@ run(function()
 			elseif type(data) == 'table' then
 				table.clear(data)
 			end
+		else
+			local desc = char.Humanoid:WaitForChild('HumanoidDescription', 5)
+			if desc then
+				local emotes, equipped = {}, {}
+				for index, entry in EmoteList.ListEnabled do
+					local split = entry:split('/')
+					emotes['Emote '..tostring(index)] = {tonumber(split[2])}
+					table.insert(equipped, {Name = 'Emote '..tostring(index), Slot = tonumber(split[1]) or 1})
+				end
+	
+				desc:SetEmotes(emotes)
+				desc:SetEquippedEmotes(equipped)
+			end
 		end
 	end
 	
@@ -9229,8 +9353,10 @@ run(function()
 	})
 	Mode = Disguise:CreateDropdown({
 		Name = 'Mode',
-		List = {'Character', 'Animation'},
-		Function = function()
+		List = {'Character', 'Animation', 'Emotes'},
+		Function = function(val)
+			EmoteList.Object.Visible = val == 'Emotes'
+	
 			if Disguise.Enabled then
 				Disguise:Toggle()
 				Disguise:Toggle()
@@ -9246,6 +9372,18 @@ run(function()
 				Disguise:Toggle()
 			end
 		end
+	})
+	EmoteList = Disguise:CreateTextList({
+		Name = 'Emote List',
+		Placeholder = 'slot/emoteid',
+		Function = function()
+			if Disguise.Enabled then
+				Disguise:Toggle()
+				Disguise:Toggle()
+			end
+		end,
+		Darker = true,
+		Visible = false
 	})
 end)
 
@@ -9786,6 +9924,7 @@ end)
 run(function()
 	local TimeChanger
 	local Value
+	local Loop
 	local old
 	
 	TimeChanger = vape.Legit:CreateModule({
@@ -9794,6 +9933,12 @@ run(function()
 			if callback then
 				old = lightingService.TimeOfDay
 				lightingService.TimeOfDay = Value.Value..':00:00'
+	
+				if Loop.Enabled then
+					TimeChanger:Clean(runService.RenderStepped:Connect(function()
+						lightingService.TimeOfDay = Value.Value..':00:00'
+					end))
+				end
 			else
 				lightingService.TimeOfDay = old
 				old = nil
@@ -9812,5 +9957,13 @@ run(function()
 			end
 		end
 	})
-	
+	Loop = TimeChanger:CreateToggle({
+		Name = 'Loop',
+		Function = function()
+			if TimeChanger.Enabled then
+				TimeChanger:Toggle()
+				TimeChanger:Toggle()
+			end
+		end
+	})
 end)
