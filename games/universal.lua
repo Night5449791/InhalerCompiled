@@ -8282,7 +8282,6 @@ run(function()
 	local Range
 	local WaitTime
 	local WaitRandom
-	local ShowWaitTime
 	local Visuals
 	local PathColor
 	local NodeColor
@@ -8304,8 +8303,6 @@ run(function()
 		end
 	end
 	
-	-- A cube distribution clusters near the centre, so most goals landed back where the character already stood.
-	-- Polar keeps them evenly spread over the ring, and the minimum radius skips the spot underfoot.
 	local function randomize(base, range)
 		if not base then return end
 	
@@ -8349,8 +8346,6 @@ run(function()
 		end
 	end
 	
-	-- Arms the prediction draws and the walk actually follows. A full circle means the highlighted arm is a real
-	-- route rather than a line drawn next to one.
 	local function buildCandidates()
 		table.clear(candidates)
 	
@@ -8376,7 +8371,6 @@ run(function()
 	local function nextGoal()
 		local root = getRoot()
 	
-		-- A single fixed anchor means every goal eventually sits somewhere already walked, so drift it now and then
 		goalsSinceAnchor += 1
 		if root and goalsSinceAnchor >= 4 then
 			startPosition, goalsSinceAnchor = root.Position, 0
@@ -8384,7 +8378,6 @@ run(function()
 	
 		buildCandidates()
 	
-		-- Shuffle so a failed arm falls through to the next one instead of throwing the whole pick away
 		local order = {}
 		for index = 1, #candidates do
 			order[index] = index
@@ -8607,12 +8600,6 @@ run(function()
 				entitylib.character.Humanoid:MoveTo(entitylib.character.RootPart.Position)
 			end
 		end,
-		ExtraText = function()
-			if ShowWaitTime.Enabled and timer > 0 then
-				return '[' .. math.floor(timer * tick * 1000) .. 'ms]'
-			end
-			return ''
-		end,
 		Tooltip = 'Walks around with the pathfinder so the game never registers you as idle.'
 	})
 	Options = {
@@ -8647,11 +8634,6 @@ run(function()
 		})
 	}
 	Range, WaitTime, WaitRandom = Options.Range, Options.WaitTime, Options.WaitRandom
-	ShowWaitTime = AntiAFK:CreateToggle({
-		Name = 'Show Wait Time',
-		Default = true,
-		Tooltip = 'Show the remaining wait on the module itself.'
-	})
 	Visuals = AntiAFK:CreateToggle({
 		Name = 'Visuals',
 		Default = true,
