@@ -108,19 +108,31 @@ local function isTarget(plr)
 end
 
 local function canClick()
-	local mousepos = (inputService:GetMouseLocation() - guiService:GetGuiInset())
-	for _, v in lplr.PlayerGui:GetGuiObjectsAtPosition(mousepos.X, mousepos.Y) do
-		local obj = v:FindFirstAncestorOfClass('ScreenGui')
-		if v.Active and v.Visible and obj and obj.Enabled then
+	local pos = (inputService:GetMouseLocation() - guiService:GetGuiInset())
+
+	if gethui and gethui():IsA('BasePlayerGui') then
+		for _, obj in gethui():GetGuiObjectsAtPosition(pos.X, pos.Y) do
+			local holder = obj:FindFirstAncestorOfClass('ScreenGui')
+			if obj.Active and obj.Visible and holder and holder.Enabled then
+				return false
+			end
+		end
+	end
+
+	for _, obj in coreGui:GetGuiObjectsAtPosition(pos.X, pos.Y) do
+		local holder = obj:FindFirstAncestorOfClass('ScreenGui')
+		if obj.Active and obj.Visible and holder and holder.Enabled then
 			return false
 		end
 	end
-	for _, v in coreGui:GetGuiObjectsAtPosition(mousepos.X, mousepos.Y) do
-		local obj = v:FindFirstAncestorOfClass('ScreenGui')
-		if v.Active and v.Visible and obj and obj.Enabled then
+
+	for _, obj in lplr.PlayerGui:GetGuiObjectsAtPosition(pos.X, pos.Y) do
+		local holder = obj:FindFirstAncestorOfClass('ScreenGui')
+		if obj.Active and obj.Visible and holder and holder.Enabled then
 			return false
 		end
 	end
+
 	return (not vape.gui.ScaledGui.ClickGui.Visible) and (not inputService:GetFocusedTextBox())
 end
 
@@ -1012,6 +1024,7 @@ notif("Inhaler", "Welcome to Inhaler V4, the better exploiting solution.", 5)
 run(function()
 	local AimAssist
 	local Targets
+	local Mode
 	local Part
 	local AimAssistMethod
 	local FOV
@@ -1027,10 +1040,7 @@ run(function()
 	local moveConst = Vector2.new(1, 0.77) * math.rad(0.5)
 	
 	local function wrapAngle(num)
-		num = num % math.pi
-		num -= num >= (math.pi / 2) and math.pi or 0
-		num += num < -(math.pi / 2) and math.pi or 0
-		return num
+		return (num + math.pi % math.tau) - math.pi
 	end
 	
 	AimAssist = vape.Categories.Combat:CreateModule({
@@ -1053,6 +1063,11 @@ run(function()
 				mouseScale = moveConst * UserSettings():GetService('UserGameSettings').MouseSensitivity
 			end
 	
+			-- hoisted out of the frame loop: the mode decides which selector runs and
+			-- whether an origin is handed to it, and neither changes while it is enabled
+			local positionMode = Mode.Value == 'Position'
+			local selector = positionMode and entitylib.EntityPosition or entitylib.EntityMouse
+	
 			local function step(dt)
 				if CircleObject then
 					CircleObject.Position = touch and gameCamera.ViewportSize / 2 or inputService:GetMouseLocation()
@@ -1066,13 +1081,13 @@ run(function()
 				local camCF = gameCamera.CFrame
 				local origin, partName = camCF.Position, Part.Value
 	
-				entity = entitylib.EntityMouse({
+				entity = selector({
 					Range = FOV.Value,
 					Part = partName,
 					Players = Targets.Players.Enabled,
 					NPCs = Targets.NPCs.Enabled,
 					Wallcheck = Targets.Walls.Enabled,
-					Origin = origin
+					Origin = positionMode and origin or nil
 				})
 	
 				if not entity then return end
@@ -1139,6 +1154,17 @@ run(function()
 		Tooltip = 'Smoothly aims to closest valid target'
 	})
 	Targets = AimAssist:CreateTargets({Players = true})
+	Mode = AimAssist:CreateDropdown({
+		Name = 'Mode',
+		List = {'Mouse', 'Position'},
+		Function = function()
+			if AimAssist.Enabled then
+				AimAssist:Toggle()
+				AimAssist:Toggle()
+			end
+		end,
+		Tooltip = 'Mouse picks the entity closest to the cursor.\nPosition picks the entity closest to your character'
+	})
 	AimAssistMethod = AimAssist:CreateDropdown({
 		Name = 'Method',
 		List = {'Mouse', 'Camera'},
@@ -1284,7 +1310,7 @@ run(function()
 				until not AutoClicker.Enabled
 			end
 		end,
-		Tooltip = 'Automatically clicks for you'
+		Tooltip = 'Automatically clicks for you.'
 	})
 	Mode = AutoClicker:CreateDropdown({
 		Name = 'Mode',
@@ -1397,6 +1423,7 @@ run(function()
 	local Mode
 	local Method
 	local RayMethod
+	local SchedulerPriority
 	local IgnoredScripts
 	local Range
 	local HitChance
@@ -1422,8 +1449,8 @@ run(function()
 	local oldnamecall, oldhook, hookmethod
 	local rand = Random.new()
 	local clickDelay = os.clock()
+	local fireOffset = CFrame.new()
 	local didOth
-	local fireOffset
 
 	local function getMousePosition()
 		if inputService.TouchEnabled then
@@ -1614,7 +1641,7 @@ run(function()
 					end))
 
 					local key = httpService:GenerateGUID(false)
-					runService:BindToRenderStep(key, 0, function()
+					runService:BindToRenderStep(key, SchedulerPriority.Value, function()
 						if old then
 							gameCamera.CFrame = old
 							old = nil
@@ -1746,6 +1773,8 @@ run(function()
 			end
 
 			RayMethod.Object.Visible = val == 'Raycast'
+			IgnoredScripts.Object.Visible = val ~= 'TaskScheduler'
+			SchedulerPriority.Object.Visible = val == 'TaskScheduler'
 		end,
 		Tooltip = 'FindPartOnRay* - Deprecated methods of raycasting used in old games\nRaycast - The modern raycast method\n*PointToRay - Method to generate a ray from a screen position\nRay - Used in old games'
 	})
@@ -1786,6 +1815,21 @@ run(function()
 		Max = 100,
 		Default = 65,
 		Suffix = '%'
+	})
+	SchedulerPriority = SilentAim:CreateSlider({
+		Name = 'Scheduler Priority',
+		Min = -5,
+		Max = 5,
+		Default = 0,
+		Function = function()
+			if SilentAim.Enabled then
+				SilentAim:Toggle()
+				SilentAim:Toggle()
+			end
+		end,
+		Darker = true,
+		Visible = false,
+		Tooltip = 'Adjust the RenderStepped priority for TaskScheduler, only adjust this if you know what you are doing!'
 	})
 	AutoFire = SilentAim:CreateToggle({
 		Name = 'AutoFire',
@@ -2683,7 +2727,7 @@ run(function()
 		ExtraText = function()
 			return Mode.Value
 		end,
-		Tooltip = 'Lets you jump higher'
+		Tooltip = 'Lets you jump higher.'
 	})
 	Mode = HighJump:CreateDropdown({
 		Name = 'Mode',
@@ -2831,7 +2875,7 @@ run(function()
 				end
 			end
 		end,
-		Tooltip = 'Turns you invisible.'
+		Tooltip = 'Turns you invisible using animations.'
 	})
 end)
 
@@ -3218,7 +3262,7 @@ run(function()
 		ExtraText = function()
 			return Mode.Value
 		end,
-		Tooltip = 'Lets you jump farther'
+		Tooltip = 'Lets you jump farther.'
 	})
 	Mode = LongJump:CreateDropdown({
 		Name = 'Mode',
@@ -3485,7 +3529,7 @@ run(function()
 				fflag = nil
 			end
 		end,
-		Tooltip = 'Lets you Phase/Clip through walls. (Hold shift to use Phase over spider)'
+		Tooltip = 'Phase/Clip through walls. (Hold Left Shift to use Phase over Spider)'
 	})
 	Mode = Phase:CreateDropdown({
 		Name = 'Mode',
@@ -3755,7 +3799,7 @@ run(function()
 				SpiderShift = false
 			end
 		end,
-		Tooltip = 'Lets you climb up walls. (Hold shift to use Phase over spider)'
+		Tooltip = 'Lets you climb up obstacles. (Hold Left Shift to use Phase over Spider)'
 	})
 	Mode = Spider:CreateDropdown({
 		Name = 'Mode',
@@ -3841,7 +3885,7 @@ run(function()
 				end
 			end
 		end,
-		Tooltip = 'Makes your character spin around in circles (does not work in first person)'
+		Tooltip = 'Automatically spins your character around in circles. (Does not work in first person)'
 	})
 	Mode = SpinBot:CreateDropdown({
 		Name = 'Mode',
@@ -3880,8 +3924,6 @@ run(function()
 	local SearchRange
 	local StrafeRange
 	local YFactor
-	local Targeting
-	local TargetUsername
 	local rayCheck = RaycastParams.new()
 	rayCheck.RespectCanCollide = true
 	local module, old
@@ -3908,19 +3950,6 @@ run(function()
 						Players = Targets.Players.Enabled,
 						NPCs = Targets.NPCs.Enabled
 					})
-	
-					if Targeting.Enabled then
-						local name = (TargetUsername.Value or ''):lower()
-						if name ~= '' then
-							ent = nil
-							for _, e in entitylib.List do
-								if e.Player and (e.Player.Name:lower() == name or e.Player.DisplayName:lower() == name) then
-									ent = e
-									break
-								end
-							end
-						end
-					end
 	
 					if ent then
 						local root, targetPos = entitylib.character.RootPart, ent.RootPart.Position
@@ -3977,26 +4006,11 @@ run(function()
 				TargetStrafeVector = nil
 			end
 		end,
-		Tooltip = 'Automatically strafes around the opponent'
+		Tooltip = 'Automatically strafes around nearby entities.'
 	})
 	Targets = TargetStrafe:CreateTargets({
 		Players = true,
 		Walls = true
-	})
-	Targeting = TargetStrafe:CreateToggle({
-		Name = 'Targeting',
-		Default = false,
-		Function = function(enabled)
-			TargetUsername.Object.Visible = enabled
-		end,
-		Tooltip = 'Force TargetStrafe to lock onto the player set in Target Username instead of the nearest one.'
-	})
-	TargetUsername = TargetStrafe:CreateTextBox({
-		Name = 'Target Username',
-		Placeholder = 'Roblox username',
-		Player = true,
-		Visible = false,
-		Tooltip = 'The player TargetStrafe will lock onto while Targeting is enabled.'
 	})
 	SearchRange = TargetStrafe:CreateSlider({
 		Name = 'Search Range',
@@ -4042,7 +4056,7 @@ run(function()
 				end))
 			end
 		end,
-		Tooltip = 'Change the game speed.'
+		Tooltip = 'Modifies game timer'
 	})
 	Value = Timer:CreateSlider({
 		Name = 'Value',
@@ -4173,64 +4187,106 @@ run(function()
 	local Teammates
 	local Walls
 	local Reference = {}
+	local Threads = {}
 	local Folder = Instance.new('Folder')
 	Folder.Parent = vape.holder
+	local Frame
 	
-	local function Added(ent)
-		if not Targets.Players.Enabled and ent.Player then return end
-		if not Targets.NPCs.Enabled and ent.NPC then return end
-		if Teammates.Enabled and (not ent.Targetable) and (not ent.Friend) then return end
+	local function Added(entity)
+		if not Targets.Players.Enabled and entity.Player then return end
+		if not Targets.NPCs.Enabled and entity.NPC then return end
+		if Teammates.Enabled and (not entity.Targetable) and (not entity.Friend) then return end
 		if vape.ThreadFix then
 			setthreadidentity(8)
 		end
 	
 		if Mode.Value == 'Highlight' then
 			local cham = Instance.new('Highlight')
-			cham.Adornee = ent.Character
+			cham.Adornee = entity.Character
 			cham.DepthMode = Enum.HighlightDepthMode[Walls.Enabled and 'AlwaysOnTop' or 'Occluded']
-			cham.FillColor = entitylib.getEntityColor(ent) or Color3.fromHSV(FillColor.Hue, FillColor.Sat, FillColor.Value)
+			cham.FillColor = entitylib.getEntityColor(entity) or Color3.fromHSV(FillColor.Hue, FillColor.Sat, FillColor.Value)
 			cham.OutlineColor = Color3.fromHSV(OutlineColor.Hue, OutlineColor.Sat, OutlineColor.Value)
 			cham.FillTransparency = FillTransparency.Value
 			cham.OutlineTransparency = OutlineTransparency.Value
 			cham.Parent = Folder
-			Reference[ent] = cham
+			Reference[entity] = cham
+		elseif Mode.Value == 'ViewportFrame' then
+			if Threads[entity] then
+				task.cancel(Threads[entity])
+			end
+	
+			Threads[entity] = task.spawn(function()
+				if entity.Player and entity.SpawnTime > os.clock() then
+					task.wait(0.5)
+				end
+	
+				entity.Character.Archivable = true
+				local clone = entity.Character:Clone()
+				for _, scr in clone:QueryDescendants('LocalScript, Tool') do
+					scr:Destroy()
+				end
+				entity.Character.Archivable = false
+				clone.Parent = Frame.WorldModel
+	
+				local animator = clone:FindFirstChildWhichIsA('Animator', true)
+				local oanim = entity.Character:FindFirstChildWhichIsA('Animator', true)
+				if animator and oanim then
+					animator:SynchronizeWith(oanim)
+				end
+	
+				Threads[entity] = nil
+				Reference[entity] = {
+					Character = clone,
+					Root = clone:FindFirstChild('HumanoidRootPart')
+				}
+			end)
 		else
 			local chams = {}
-			for _, v in ent.Character:GetChildren() do
-				if v:IsA('BasePart') and (ent.NPC or v.Name:find('Arm') or v.Name:find('Leg') or v.Name:find('Hand') or v.Name:find('Feet') or v.Name:find('Torso') or v.Name == 'Head') then
-					local box = Instance.new(v.Name == 'Head' and 'SphereHandleAdornment' or 'BoxHandleAdornment')
-					if v.Name == 'Head' then
+			for _, part in entity.Character:GetChildren() do
+				if part:IsA('BasePart') and (entity.NPC or part.Name:find('Arm') or part.Name:find('Leg') or part.Name:find('Hand') or part.Name:find('Feet') or part.Name:find('Torso') or part.Name == 'Head') then
+					local box = Instance.new(part.Name == 'Head' and 'SphereHandleAdornment' or 'BoxHandleAdornment')
+					if part.Name == 'Head' then
 						box.Radius = 0.75
 					else
-						box.Size = v.Size
+						box.Size = part.Size
 					end
+	
 					box.AlwaysOnTop = Walls.Enabled
-					box.Adornee = v
+					box.Adornee = part
 					box.ZIndex = 0
 					box.Transparency = FillTransparency.Value
-					box.Color3 = entitylib.getEntityColor(ent) or Color3.fromHSV(FillColor.Hue, FillColor.Sat, FillColor.Value)
+					box.Color3 = entitylib.getEntityColor(entity) or Color3.fromHSV(FillColor.Hue, FillColor.Sat, FillColor.Value)
 					box.Parent = Folder
 					table.insert(chams, box)
 				end
 			end
-			Reference[ent] = chams
+	
+			Reference[entity] = chams
 		end
 	end
 	
-	local function Removed(ent)
-		if Reference[ent] then
+	local function Removed(entity)
+		if Reference[entity] then
 			if vape.ThreadFix then
 				setthreadidentity(8)
 			end
-			if type(Reference[ent]) == 'table' then
-				for _, v in Reference[ent] do
-					v:Destroy()
-				end
-				table.clear(Reference[ent])
-			else
-				Reference[ent]:Destroy()
+	
+			if Threads[entity] then
+				task.cancel(Threads[entity])
+				Threads[entity] = nil
 			end
-			Reference[ent] = nil
+	
+			if type(Reference[entity]) == 'table' then
+				for _, entry in Reference[entity] do
+					entry:Destroy()
+				end
+	
+				table.clear(Reference[entity])
+			else
+				Reference[entity]:Destroy()
+			end
+	
+			Reference[entity] = nil
 		end
 	end
 	
@@ -4238,6 +4294,23 @@ run(function()
 		Name = 'Chams',
 		Function = function(callback)
 			if callback then
+				if Mode.Value == 'ViewportFrame' then
+					Frame = Instance.new('ViewportFrame')
+					Frame.BackgroundTransparency = 1
+					Frame.CurrentCamera = gameCamera
+					Frame.Size = UDim2.fromScale(1, 1)
+					Frame.Parent = vape.gui
+					Chams:Clean(Frame)
+					local holder = Instance.new('WorldModel')
+					holder.Parent = Frame
+	
+					Chams:Clean(runService.RenderStepped:Connect(function()
+						for entity, entry in Reference do
+							entry.Root.CFrame = entity.RootPart.CFrame
+						end
+					end))
+				end
+	
 				Chams:Clean(entitylib.Events.EntityRemoved:Connect(Removed))
 				Chams:Clean(entitylib.Events.EntityAdded:Connect(function(ent)
 					if Reference[ent] then
@@ -4245,30 +4318,41 @@ run(function()
 					end
 					Added(ent)
 				end))
+	
 				Chams:Clean(vape.Categories.Friends.ColorUpdate.Event:Connect(function()
-					for i, v in Reference do
-						local color = entitylib.getEntityColor(i) or Color3.fromHSV(FillColor.Hue, FillColor.Sat, FillColor.Value)
-						if type(v) == 'table' then
-							for _, v2 in v do v2.Color3 = color end
+					for entity, entry in Reference do
+						local color = entitylib.getEntityColor(entity) or Color3.fromHSV(FillColor.Hue, FillColor.Sat, FillColor.Value)
+						if type(entry) == 'table' then
+							if entry.Root then continue end
+							for _, handle in entry do
+								handle.Color3 = color
+							end
 						else
-							v.FillColor = color
+							entry.FillColor = color
 						end
 					end
 				end))
 	
-				for _, v in entitylib.List do
-					if Reference[v] then
-						Removed(v)
+				for _, entity in entitylib.List do
+					if Reference[entity] then
+						Removed(entity)
 					end
-					Added(v)
+	
+					Added(entity)
 				end
 			else
-				for i in Reference do
-					Removed(i)
+				for entity in Reference do
+					Removed(entity)
 				end
+	
+				for _, thread in Threads do
+					task.cancel(thread)
+				end
+	
+				table.clear(Threads)
 			end
 		end,
-		Tooltip = 'Render players through walls'
+		Tooltip = 'Render players through walls.'
 	})
 	Targets = Chams:CreateTargets({
 		Players = true,
@@ -4281,10 +4365,14 @@ run(function()
 	})
 	Mode = Chams:CreateDropdown({
 		Name = 'Mode',
-		List = {'Highlight', 'BoxHandles'},
+		List = {'Highlight', 'BoxHandles', 'ViewportFrame'},
 		Function = function(val)
 			OutlineColor.Object.Visible = val == 'Highlight'
 			OutlineTransparency.Object.Visible = val == 'Highlight'
+			FillTransparency.Object.Visible = val ~= 'ViewportFrame'
+			FillColor.Object.Visible = val ~= 'ViewportFrame'
+			Walls.Object.Visible = val ~= 'ViewportFrame'
+	
 			if Chams.Enabled then
 				Chams:Toggle()
 				Chams:Toggle()
@@ -4294,12 +4382,16 @@ run(function()
 	FillColor = Chams:CreateColorSlider({
 		Name = 'Color',
 		Function = function(hue, sat, val)
-			for i, v in Reference do
-				local color = entitylib.getEntityColor(i) or Color3.fromHSV(hue, sat, val)
-				if type(v) == 'table' then
-					for _, v2 in v do v2.Color3 = color end
+			for entity, entry in Reference do
+				local color = entitylib.getEntityColor(entity) or Color3.fromHSV(hue, sat, val)
+	
+				if type(entry) == 'table' then
+					if entry.Root then continue end
+					for _, handle in entry do
+						handle.Color3 = color
+					end
 				else
-					v.FillColor = color
+					entry.FillColor = color
 				end
 			end
 		end
@@ -4308,9 +4400,9 @@ run(function()
 		Name = 'Outline Color',
 		DefaultSat = 0,
 		Function = function(hue, sat, val)
-			for i, v in Reference do
-				if type(v) ~= 'table' then
-					v.OutlineColor = Color3.fromHSV(hue, sat, val)
+			for _, entry in Reference do
+				if type(entry) ~= 'table' then
+					entry.OutlineColor = Color3.fromHSV(hue, sat, val)
 				end
 			end
 		end,
@@ -4322,11 +4414,14 @@ run(function()
 		Max = 1,
 		Default = 0.5,
 		Function = function(val)
-			for _, v in Reference do
-				if type(v) == 'table' then
-					for _, v2 in v do v2.Transparency = val end
+			for _, entry in Reference do
+				if type(entry) == 'table' then
+					if entry.Root then continue end
+					for _, handle in entry do
+						handle.Transparency = val
+					end
 				else
-					v.FillTransparency = val
+					entry.FillTransparency = val
 				end
 			end
 		end,
@@ -4338,9 +4433,9 @@ run(function()
 		Max = 1,
 		Default = 0.5,
 		Function = function(val)
-			for _, v in Reference do
-				if type(v) ~= 'table' then
-					v.OutlineTransparency = val
+			for _, entry in Reference do
+				if type(entry) ~= 'table' then
+					entry.OutlineTransparency = val
 				end
 			end
 		end,
@@ -4350,13 +4445,14 @@ run(function()
 	Walls = Chams:CreateToggle({
 		Name = 'Render Walls',
 		Function = function(callback)
-			for _, v in Reference do
-				if type(v) == 'table' then
-					for _, v2 in v do
-						v2.AlwaysOnTop = callback
+			for _, entry in Reference do
+				if type(entry) == 'table' then
+					if entry.Root then continue end
+					for _, handle in entry do
+						handle.AlwaysOnTop = callback
 					end
 				else
-					v.DepthMode = Enum.HighlightDepthMode[callback and 'AlwaysOnTop' or 'Occluded']
+					entry.DepthMode = Enum.HighlightDepthMode[callback and 'AlwaysOnTop' or 'Occluded']
 				end
 			end
 		end,
@@ -5755,18 +5851,18 @@ run(function()
 	local Rots = {}
 	local models = {}
 	
-	local function addMesh(ent)
+	local function addMesh(entity)
 		if vape.ThreadFix then
 			setthreadidentity(8)
 		end
 	
 		if Hide.Enabled then
-			for _, part in ent.Character:QueryDescendants('BasePart') do
+			for _, part in entity.Character:QueryDescendants('BasePart') do
 				part.Transparency = 1
 			end
 		end
 	
-		local root = ent.RootPart
+		local root = entity.RootPart
 		local part = Instance.new('Part')
 		part.Size = Vector3.new(3, 3, 3)
 		part.CFrame = root.CFrame * CFrame.new(Offsets[1].Value, Offsets[2].Value, Offsets[3].Value) * CFrame.Angles(math.rad(Rots[1].Value), math.rad(Rots[2].Value), math.rad(Rots[3].Value))
@@ -5786,10 +5882,10 @@ run(function()
 		models[root] = part
 	end
 	
-	local function removeMesh(ent)
-		if models[ent.RootPart] then
-			models[ent.RootPart]:Destroy()
-			models[ent.RootPart] = nil
+	local function removeMesh(entity)
+		if models[entity.RootPart] then
+			models[entity.RootPart]:Destroy()
+			models[entity.RootPart] = nil
 		end
 	end
 	
@@ -7496,15 +7592,70 @@ end)
 run(function()
 	local Blink
 	local Type
+	local Fake
 	local AutoSend
 	local AutoSendLength
+	local Folder = Instance.new('Folder')
+	Folder.Parent = vape.holder
 	local oldphys, oldsend
+	local boxes = {}
+	local whitelist = {
+		Head = true,
+		Torso = true,
+		UpperTorso = true,
+		LowerTorso = true,
+		['Left Arm'] = true,
+		['Right Arm'] = true,
+		['Left Leg'] = true,
+		['Right Leg'] = true,
+		LeftUpperArm = true,
+		RightUpperArm = true,
+		LeftLowerArm = true,
+		RightLowerArm = true,
+		LeftHand = true,
+		RightHand = true,
+		LeftUpperLeg = true,
+		RightUpperLeg = true,
+		LeftLowerLeg = true,
+		RightLowerLeg = true,
+		LeftFoot = true,
+		RightFoot = true
+	}
+	
+	local function updateBoxes()
+		if Blink.Enabled and Fake.Enabled and entitylib.isAlive then
+			for _, part in entitylib.character.Character:GetChildren() do
+				if part:IsA('BasePart') and whitelist[part.Name] then
+					if not boxes[part.Name] then
+						local box = Instance.new(part.Name == 'Head' and 'SphereHandleAdornment' or 'BoxHandleAdornment')
+						if part.Name == 'Head' then
+							box.Radius = 0.75
+						else
+							box.Size = part.Size
+						end
+	
+						box.AlwaysOnTop = true
+						box.Adornee = workspace
+						box.ZIndex = 10
+						box.Transparency = 0.5
+						box.Parent = Folder
+						boxes[part.Name] = box
+					end
+	
+					local box = boxes[part.Name]
+					box.CFrame = workspace:GetPivot():ToObjectSpace(part.CFrame)
+				end
+			end
+		end
+	end
 	
 	Blink = vape.Categories.Utility:CreateModule({
 		Name = 'Blink',
 		Function = function(callback)
 			if callback then
+				updateBoxes()
 				local teleported
+				local timetaken = os.clock()
 				Blink:Clean(lplr.OnTeleport:Connect(function()
 					setfflag('PhysicsSenderMaxBandwidthBps', '38760')
 					setfflag('DataSenderRate', '60')
@@ -7513,8 +7664,10 @@ run(function()
 	
 				repeat
 					local physicsrate, senderrate = '0', Type.Value == 'All' and '-1' or '60'
-					if AutoSend.Enabled and tick() % (AutoSendLength.Value + 0.1) > AutoSendLength.Value then
+					if AutoSend.Enabled and (os.clock() - timetaken) > AutoSendLength.Value then
+						updateBoxes()
 						physicsrate, senderrate = '38760', '60'
+						timetaken = os.clock()
 					end
 	
 					if physicsrate ~= oldphys or senderrate ~= oldsend then
@@ -7523,13 +7676,17 @@ run(function()
 						oldphys, oldsend = physicsrate, senderrate
 					end
 	
-					task.wait(0.03)
+					task.wait(physicsrate == '38760' and 0.1 or 0.03)
 				until (not Blink.Enabled and not teleported)
 			else
 				if setfflag then
 					setfflag('PhysicsSenderMaxBandwidthBps', '38760')
 					setfflag('DataSenderRate', '60')
 				end
+	
+				Folder:ClearAllChildren()
+				table.clear(boxes)
+	
 				oldphys, oldsend = nil, nil
 			end
 		end,
@@ -7540,12 +7697,17 @@ run(function()
 		List = {'Movement Only', 'All'},
 		Tooltip = 'Movement Only - Only chokes movement packets\nAll - Chokes remotes & movement'
 	})
+	Fake = Blink:CreateToggle({
+		Name = 'Spawn fake',
+		Function = updateBoxes,
+		Tooltip = 'Spawns chams from where you started/are on the servers side.'
+	})
 	AutoSend = Blink:CreateToggle({
 		Name = 'Auto send',
 		Function = function(callback)
 			AutoSendLength.Object.Visible = callback
 		end,
-		Tooltip = 'Automatically send packets in intervals'
+		Tooltip = 'Automatically sends packets after the designated time limit has passed'
 	})
 	AutoSendLength = Blink:CreateSlider({
 		Name = 'Send threshold',
@@ -7554,6 +7716,7 @@ run(function()
 		Decimal = 100,
 		Darker = true,
 		Visible = false,
+		Tooltip = 'Allows you to choke your packets for a custom set time limit.\nAfter the time limit has passed, all packets will be sent.',
 		Suffix = function(val)
 			return val == 1 and 'second' or 'seconds'
 		end

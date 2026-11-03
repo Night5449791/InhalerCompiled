@@ -273,7 +273,7 @@ uipallet = {
 	Text = Color3.fromRGB(200, 200, 200),
 	Font = Font.fromEnum(Enum.Font.Arial),
 	FontSemiBold = Font.fromEnum(Enum.Font.Arial, Enum.FontWeight.SemiBold),
-	Tween = TweenInfo.new(0.16, Enum.EasingStyle.Linear)
+	Tween = TweenInfo.new(0.15, Enum.EasingStyle.Linear)
 }
 
 do
@@ -840,7 +840,7 @@ function vape:LoadGUI()
 	scarcitybanner.FontFace = uipallet.Font
 	scarcitybanner.Position = UDim2.fromScale(0, 0.97)
 	scarcitybanner.Size = UDim2.fromScale(1, 0.018)
-	scarcitybanner.Text = 'All update logs and game support are found in the discord, click the discord icon to join.'
+	scarcitybanner.Text = 'All update logs and game support are found in the discord, click the discord icon to join!'
 	scarcitybanner.TextColor3 = Color3.new(1, 1, 1)
 	scarcitybanner.TextScaled = true
 	scarcitybanner.TextStrokeTransparency = 0.5
