@@ -1206,7 +1206,6 @@ end
 run(function()
 	local AimAssist
 	local Targets
-	local AimAssistMethod
 	local Sort
 	local AimSpeed
 	local Distance
@@ -1214,96 +1213,39 @@ run(function()
 	local StrafeIncrease
 	local KillauraTarget
 	local ClickAim
-	local moveConst = Vector2.new(1, 0.77) * math.rad(0.5)
-	
-	local function wrapAngle(num)
-		num = num % math.pi
-		num -= num >= (math.pi / 2) and math.pi or 0
-		num += num < -(math.pi / 2) and math.pi or 0
-		return num
-	end
 	
 	AimAssist = vape.Categories.Combat:CreateModule({
 		Name = 'AimAssist',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				AimAssist:Clean(runService.Heartbeat:Connect(function(dt)
+					if entitylib.isAlive and store.hand.toolType == 'sword' and ((not ClickAim.Enabled) or (tick() - bedwars.SwordController.lastSwing) < 0.4) then
+						local ent = not KillauraTarget.Enabled and entitylib.EntityPosition({
+							Range = Distance.Value,
+							Part = 'RootPart',
+							Wallcheck = Targets.Walls.Enabled,
+							Players = Targets.Players.Enabled,
+							NPCs = Targets.NPCs.Enabled,
+							Sort = sortmethods[Sort.Value]
+						}) or store.KillauraTarget
 	
-			local cameraMode = AimAssistMethod.Value == 'Camera'
-			local mouseScale
-			if not cameraMode then
-				mouseScale = moveConst * UserSettings():GetService('UserGameSettings').MouseSensitivity
-			end
-	
-			AimAssist:Clean(runService.Heartbeat:Connect(function(dt)
-				local hand = store.hand
-				if not entitylib.isAlive or not hand or hand.toolType ~= 'sword' then return end
-	
-				local sword = bedwars.SwordController
-				if ClickAim.Enabled and (not sword or (tick() - sword.lastSwing) >= 0.4) then return end
-	
-				local ent = not KillauraTarget.Enabled and entitylib.EntityPosition({
-					Range = Distance.Value,
-					Part = 'RootPart',
-					Wallcheck = Targets.Walls.Enabled,
-					Players = Targets.Players.Enabled,
-					NPCs = Targets.NPCs.Enabled,
-					Sort = sortmethods[Sort.Value]
-				}) or store.KillauraTarget
-	
-				local root = ent and ent.RootPart
-				local character = entitylib.character
-				local characterRoot = character and character.RootPart
-				if not root or not characterRoot then return end
-	
-				local flatDelta = (root.Position - characterRoot.Position) * Vector3.new(1, 0, 1)
-				local deltaMagnitude = flatDelta.Magnitude
-				if deltaMagnitude < 0.001 then return end
-	
-				local localfacing = characterRoot.CFrame.LookVector * Vector3.new(1, 0, 1)
-				if math.acos(math.clamp(localfacing:Dot(flatDelta / deltaMagnitude), -1, 1)) >= (math.rad(AngleSlider.Value) / 2) then return end
-	
-				targetinfo.Targets[ent] = os.clock() + 1
-	
-				local alpha = math.min((AimSpeed.Value + (StrafeIncrease.Enabled and (inputService:IsKeyDown(Enum.KeyCode.A) or inputService:IsKeyDown(Enum.KeyCode.D)) and 10 or 0)) * dt, 1)
-				local camCF = gameCamera.CFrame
-	
-				if cameraMode then
-					gameCamera.CFrame = camCF:Lerp(CFrame.lookAt(camCF.Position, root.Position), alpha)
-				else
-					local origin = camCF.Position
-					local target = (root.Position - origin).Unit
-					target = target == target and target or Vector3.zero
-					if target == Vector3.zero then return end
-	
-					local facing = camCF.LookVector
-					local diffYaw = wrapAngle(math.atan2(facing.X, facing.Z) - math.atan2(target.X, target.Z))
-					local diffPitch = math.asin(facing.Y) - math.asin(target.Y)
-					local move = Vector2.new(diffYaw, diffPitch) // mouseScale
-	
-					move *= alpha
-	
-					if typeof(mousemoverel) == 'function' then
-						mousemoverel(move.X, move.Y)
+						if ent then
+							local delta = (ent.RootPart.Position - entitylib.character.RootPart.Position)
+							local localfacing = entitylib.character.RootPart.CFrame.LookVector * Vector3.new(1, 0, 1)
+							local angle = math.acos(localfacing:Dot((delta * Vector3.new(1, 0, 1)).Unit))
+							if angle >= (math.rad(AngleSlider.Value) / 2) then return end
+							targetinfo.Targets[ent] = os.clock() + 1
+							gameCamera.CFrame = gameCamera.CFrame:Lerp(CFrame.lookAt(gameCamera.CFrame.p, ent.RootPart.Position), (AimSpeed.Value + (StrafeIncrease.Enabled and (inputService:IsKeyDown(Enum.KeyCode.A) or inputService:IsKeyDown(Enum.KeyCode.D)) and 10 or 0)) * dt)
+						end
 					end
-				end
-			end))
+				end))
+			end
 		end,
 		Tooltip = 'Smoothly aims to closest valid target with sword'
 	})
 	Targets = AimAssist:CreateTargets({
 		Players = true,
 		Walls = true
-	})
-	AimAssistMethod = AimAssist:CreateDropdown({
-		Name = 'Method',
-		List = {'Camera', 'Mouse'},
-		Function = function()
-			if AimAssist.Enabled then
-				AimAssist:Toggle()
-				AimAssist:Toggle()
-			end
-		end,
-		Tooltip = 'Camera lerps the camera CFrame, which works on mobile and sends no mouse input.\nMouse moves the cursor with mousemoverel'
 	})
 	local methods = {'Damage', 'Distance'}
 	for i in sortmethods do
@@ -1344,7 +1286,6 @@ run(function()
 		Name = 'Use killaura target'
 	})
 	StrafeIncrease = AimAssist:CreateToggle({Name = 'Strafe increase'})
-	
 end)
 
 run(function()
@@ -3398,11 +3339,11 @@ run(function()
 	
 			if Health.Enabled then
 				local healthColor = Color3.fromHSV(math.clamp(ent.Health / ent.MaxHealth, 0, 1) / 2.5, 0.89, 0.75)
-				Strings[ent] = Strings[ent]..' <font color="rgb('..tostring(math.floor(healthColor.R * 255))..','..tostring(math.floor(healthColor.G * 255))..','..tostring(math.floor(healthColor.B * 255))..')">'..math.round(ent.Health)..'</font>'
+				Strings[ent] = Strings[ent]..' <font color="#'..healthColor:ToHex()..'">'..math.round(ent.Health)..'</font>'
 			end
 	
 			if Distance.Enabled then
-				Strings[ent] = '<font color="rgb(85, 255, 85)">[</font><font color="rgb(255, 255, 255)">%s</font><font color="rgb(85, 255, 85)">]</font> '..Strings[ent]
+				Strings[ent] = '<font color="#55ff55">[</font><font color="#ffffff">%s</font><font color="#55ff55">]</font> '..Strings[ent]
 			end
 	
 			if Equipment.Enabled then
@@ -3500,11 +3441,11 @@ run(function()
 	
 				if Health.Enabled then
 					local healthColor = Color3.fromHSV(math.clamp(ent.Health / ent.MaxHealth, 0, 1) / 2.5, 0.89, 0.75)
-					Strings[ent] = Strings[ent]..' <font color="rgb('..tostring(math.floor(healthColor.R * 255))..','..tostring(math.floor(healthColor.G * 255))..','..tostring(math.floor(healthColor.B * 255))..')">'..math.round(ent.Health)..'</font>'
+					Strings[ent] = Strings[ent]..' <font color="#'..healthColor:ToHex()..'">'..math.round(ent.Health)..'</font>'
 				end
 	
 				if Distance.Enabled then
-					Strings[ent] = '<font color="rgb(85, 255, 85)">[</font><font color="rgb(255, 255, 255)">%s</font><font color="rgb(85, 255, 85)">]</font> '..Strings[ent]
+					Strings[ent] = '<font color="#55ff55">[</font><font color="#ffffff">%s</font><font color="#55ff55">]</font> '..Strings[ent]
 				end
 	
 				if Equipment.Enabled and store.inventories[ent.Player] then
@@ -4883,7 +4824,7 @@ run(function()
 	
 						if label then
 							amount = amount or 0
-							label.Text = amount..' <font color="rgb(170, 170, 170)">(Scaffold)</font>'
+							label.Text = amount..' <font color="#aaaaaa">(Scaffold)</font>'
 							label.TextColor3 = Color3.fromHSV((amount / 128) / 2.8, 0.86, 1)
 						end
 	
@@ -5004,6 +4945,7 @@ run(function()
 	local Mode
 	local Clans
 	local Party
+	local Profile
 	local Users
 	local blacklistedclans = {'gg', 'gg2', 'DV', 'DV2'}
 	local blacklisteduserids = {1502104539, 3826146717, 4531785383, 1049767300, 4926350670, 653085195, 184655415, 2752307430, 5087196317, 5744061325, 1536265275}
@@ -5042,6 +4984,22 @@ run(function()
 			})
 		elseif Mode.Value == 'Requeue' then
 			bedwars.QueueController:joinQueue(store.queueType)
+		elseif Mode.Value == 'Profile' then
+			vape.Save = function() end
+			if vape.Profile ~= Profile.Value then
+				vape:Load(true, Profile.Value)
+			end
+		elseif Mode.Value == 'AutoConfig' then
+			local safe = {'AutoClicker', 'Reach', 'Sprint', 'HitFix', 'StaffDetector'}
+			vape.Save = function() end
+			for i, v in vape.Modules do
+				if not (table.find(safe, i) or v.Category == 'Render') then
+					if v.Enabled then
+						v:Toggle()
+					end
+					v:SetBind('')
+				end
+			end
 		end
 	end
 	
@@ -5121,7 +5079,12 @@ run(function()
 	})
 	Mode = StaffDetector:CreateDropdown({
 		Name = 'Mode',
-		List = {'Uninject', 'Requeue', 'Notify'}
+		List = {'Uninject', 'Profile', 'Requeue', 'AutoConfig', 'Notify'},
+		Function = function(val)
+			if Profile.Object then
+				Profile.Object.Visible = val == 'Profile'
+			end
+		end
 	})
 	Clans = StaffDetector:CreateToggle({
 		Name = 'Blacklist clans',
@@ -5129,6 +5092,12 @@ run(function()
 	})
 	Party = StaffDetector:CreateToggle({
 		Name = 'Leave party'
+	})
+	Profile = StaffDetector:CreateTextBox({
+		Name = 'Profile',
+		Default = 'default',
+		Darker = true,
+		Visible = false
 	})
 	Users = StaffDetector:CreateTextList({
 		Name = 'Users',

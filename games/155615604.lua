@@ -855,6 +855,7 @@ for _, v in {'Reach', 'Jesus', 'MurderMystery', 'StaffDetector', 'FullBright', '
 end
 
 
+local mouseClicked
 run(function()
 	local SilentAim
 	local Target
@@ -873,7 +874,6 @@ run(function()
 	local CircleObject
 	local rand = Random.new()
 	local old
-	local hooked
 
 	local function getMousePosition()
 		if inputService.TouchEnabled then
@@ -884,16 +884,22 @@ run(function()
 	end
 
 	local function getShootTool(range)
-		local tool = lplr.Character and lplr.Character:FindFirstChildWhichIsA('Tool')
-		if tool and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and (tool:GetAttribute('Local_CurrentAmmo') or 1) > 0 and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 and (tool:GetAttribute('Range') or 0) > range then
-			return tool
+		local tool = lplr.Character:FindFirstChildWhichIsA('Tool')
+		if tool and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 and (tool:GetAttribute('Local_CurrentAmmo') or 1) > 0 then
+			local dist = tool:GetAttribute('Range') or 0
+			if dist > range then
+				return tool
+			end
 		end
 
 		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
 		if backpack then
 			for _, tool in backpack:GetChildren() do
-				if tool:IsA('Tool') and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 and tool.Name ~= 'Taser' and (tool:GetAttribute('Range') or 0) > range then
-					return tool
+				if tool:IsA('Tool') and tool:GetAttribute('FireRate') and (not tool:GetAttribute('Local_IsShooting')) and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 and tool.Name ~= 'Taser' then
+					local dist = tool:GetAttribute('Range') or 0
+					if dist > range then
+						return tool
+					end
 				end
 			end
 		end
@@ -901,7 +907,7 @@ run(function()
 
 	local function getMaxRange()
 		local mag = 0
-		local tool = lplr.Character and lplr.Character:FindFirstChildWhichIsA('Tool')
+		local tool = lplr.Character:FindFirstChildWhichIsA('Tool')
 		if tool and tool:GetAttribute('Range') and (tool:GetAttribute('Local_ReloadSession') or 0) <= 0 then
 			local dist = tool:GetAttribute('Range')
 			if dist > mag then
@@ -946,65 +952,48 @@ run(function()
 			targetinfo.Targets[entity] = os.clock() + 1
 		end
 
-		return entity, entity and entity[targetPart]
+		return entity, entity and entity[targetPart], origin
 	end
 
-	local function replaceOriginOnStack(origin, newOrigin)
-		for level = 4, 8 do
-			local success, stack = pcall(debug.getstack, level)
-			if not success or not stack then break end
-
-			for index, value in stack do
-				if value == origin then
-					pcall(debug.setstack, level, index, newOrigin)
-				end
-			end
-		end
-	end
-
-	local function Hook(origin, direction, ...)
+	local function Hook(...)
+		local origin, direction = ...
 		local gundata = debug.getupvalue(oldshoot or pl.Shoot, 10)
-		local entity, targetPart = getTarget(origin, gundata and gundata.Range or 1000, not gundata or gundata.Behavior ~= 'Taser')
+		local entity, targetPart, origin = getTarget(origin, gundata and gundata.Range or 1000, not gundata or gundata.Behavior ~= 'Taser')
 
 		if not entity then
-			return old(origin, direction, ...)
+			return old(...)
 		end
 
-		local aimPosition = targetPart.Position
+		local args = table.pack(...)
+		args[2] = targetPart.Position
 		aimTimer = os.clock() + 0.3
-		aimVec = aimPosition
+		aimVec = args[2]
 
 		if Wallbang.Enabled then
 			local ray
 			if not OriginScanner.Cache[targetPart] then
-				ray = workspace:Raycast(aimPosition, (origin - aimPosition), OriginScanner.Ray)
+				ray = workspace:Raycast(args[2], (origin - args[2]), OriginScanner.Ray)
 			end
 
-			if OriginScanner.Cache[targetPart] or ray or workspace:Raycast(origin, (aimPosition - origin), OriginScanner.Ray) then
-				local newOrigin, hit, fake = OriginScanner:Scan(
-					entitylib.character.RootPart.Position,
-					aimPosition,
-					ray and ray.Position + ray.Normal * 0.01 or nil,
-					targetPart,
-					entity
-				)
-
-				if fake then
-					return targetPart, hit
-				end
+			if OriginScanner.Cache[targetPart] or ray or workspace:Raycast(origin, (args[2] - origin), OriginScanner.Ray) then
+				local newOrigin, hit = OriginScanner:Scan(entitylib.character.RootPart.Position, args[2], ray and ray.Position + ray.Normal * 0.01 or nil, targetPart, entity)
 
 				if newOrigin then
-					replaceOriginOnStack(origin, newOrigin)
+					for index, value in debug.getstack(3) do
+						if value == origin then
+							debug.setstack(3, index, newOrigin)
+						end
+					end
 
-					origin = newOrigin
-					if hit and hit ~= aimPosition then
+					args[1] = newOrigin
+					if hit then
 						return targetPart, hit
 					end
 				end
 			end
 		end
 
-		return old(origin, aimPosition, ...)
+		return old(unpack(args, 1, args.n))
 	end
 
 	SilentAim = vape.Categories.Combat:CreateModule({
@@ -1015,38 +1004,32 @@ run(function()
 			end
 
 			if callback then
-				if old and hooked then
-					safeUnhook(hooked, old)
-				end
-
-				hooked = pl.Bullet
-				old = safeHook(hooked, function(...)
+				old = hookfunction(pl.Bullet, function(...)
 					return Hook(...)
 				end)
 
 				local fireDelay = os.clock()
 				repeat
-					if CircleObject and CircleObject.Visible then
+					if CircleObject then
 						CircleObject.Position = getMousePosition()
 					end
 
-					if AutoFire.Enabled and entitylib.isAlive and fireDelay < os.clock() then
+					if AutoFire.Enabled and fireDelay < os.clock() then
 						fireDelay = os.clock() + (1 / AutoFireRate.Value)
 
 						local tool = lplr.Character:FindFirstChildWhichIsA('Tool')
 						local gundata = debug.getupvalue(oldshoot or pl.Shoot, 10)
 						if tool and gundata then
 							local limit = AutoFireSwitch.Enabled and getMaxRange() or gundata.Range or 1000
-							local taser = gundata.Behavior == 'Taser'
-							local headPosition = entitylib.character.Head.Position
+							local taser = gundata and gundata.Behavior == 'Taser'
 							local entity = entitylib['Entity'..Mode.Value]({
 								Range = Mode.Value == 'Position' and math.min(Range.Value, limit) or Range.Value,
 								RangePosition = limit,
 								AttackCheck = not taser,
 								Wallcheck = Target.Walls.Enabled and true or nil,
-								Wallbang = Wallbang.Enabled and entitylib.character.RootPart.Position or nil,
+								Wallbang = Wallbang.Enabled and entitylib.isAlive and entitylib.character.RootPart.Position or nil,
 								Part = 'Head',
-								Origin = headPosition,
+								Origin = entitylib.isAlive and entitylib.character.Head.Position or Vector3.zero,
 								Players = Target.Players.Enabled
 							})
 
@@ -1054,7 +1037,7 @@ run(function()
 								local ammo = (tool:GetAttribute('Local_CurrentAmmo') or 0)
 								local canFire = not tool:GetAttribute('Local_IsShooting') and ammo > 0
 								if AutoFireSwitch.Enabled then
-									local ideal = getShootTool((entity.Head.Position - headPosition).Magnitude)
+									local ideal = getShootTool((entity.Head.Position - entitylib.character.Head.Position).Magnitude)
 									if ideal and tool ~= ideal then
 										entitylib.character.Humanoid:EquipTool(ideal)
 										canFire = false
@@ -1074,9 +1057,14 @@ run(function()
 					task.wait()
 				until not SilentAim.Enabled
 			else
-				if old and hooked then
-					safeUnhook(hooked, old)
-					old, hooked = nil, nil
+				if old then
+					if restorefunction then
+						restorefunction(pl.Bullet)
+					else
+						hookfunction(pl.Bullet, old)
+					end
+
+					old = nil
 				end
 			end
 		end,
@@ -1158,7 +1146,7 @@ run(function()
 	})
 	Wallbang = SilentAim:CreateToggle({
 		Name = 'Wallbang',
-		Tooltip = 'Allow you to shoot people through walls when specific conditions are met.\n(If the entity has a valid hitbox position exposed, if the shoot position can be moved past walls (eg hugging walls) or if the target is stuck inside geometry)'
+		Tooltip = 'Allow you to shoot people through walls when specific conditions are met.\n(If the entity has a valid hitbox position exposed or if the shoot position can be moved past walls (eg hugging walls))'
 	})
 	SilentAim:CreateToggle({
 		Name = 'Range Circle',
@@ -1219,7 +1207,6 @@ run(function()
 	})
 end)
 
-
 run(function()
 	local TriggerBot
 	local Targets
@@ -1245,13 +1232,13 @@ run(function()
 					posY = location.Y
 				end
 	
+				local hitPos
 				local rayPos = gameCamera:ViewportPointToRay(posX, posY)
 				local ray = workspace:Raycast(rayPos.Origin, rayPos.Direction * 1500, rayParams)
-				if not ray then return end
-	
 				local vEntity
+	
 				for _, entity in entitylib.List do
-					if entity.Targetable and entity.Character and (Targets.Players.Enabled and entity.Player or Targets.NPCs.Enabled and entity.NPC) and ray.Instance:IsDescendantOf(entity.Character) and entitylib.isVulnerable(entity, true) then
+					if entity.Targetable and entity.Character and (Targets.Players.Enabled and entity.Player or Targets.NPCs.Enabled and entity.NPC) and entitylib.isVulnerable(entity, true) and ray.Instance:IsDescendantOf(entity.Character) then
 						vEntity = entity
 						break
 					end
@@ -1259,7 +1246,7 @@ run(function()
 	
 				if vEntity then
 					local origin = entitylib.character.Head.Position
-					local hitCheck = workspace:Raycast(origin, (ray.Position - origin), rayParams)
+					local hitCheck = workspace:Raycast(origin, (ray.Position - origin), rayCheck)
 	
 					if hitCheck and hitCheck.Instance:IsDescendantOf(vEntity.Character) and (ray.Position - origin).Magnitude <= data.Range then
 						return vEntity
@@ -1453,60 +1440,48 @@ run(function()
 	local AntiTaze
 	local old, connection
 	
-	local function EntityAdded()
-		if old then return end
+	local function EntityAdded(ent)
+		connection = getconnections(replicatedStorage.GunRemotes.PlayerTased.OnClientEvent)[1]
+		if not (connection and connection.Function) then
+			repeat
+				connection = getconnections(replicatedStorage.GunRemotes.PlayerTased.OnClientEvent)[1]
+				task.wait()
+			until connection and connection.Function or not AntiTaze.Enabled
+		end
 	
-		repeat
-			connection = nil
-			for _, conn in getconnections(replicatedStorage.GunRemotes.PlayerTased.OnClientEvent) do
-				if typeof(conn.Function) == 'function' then
-					connection = conn
-					break
+		if connection and AntiTaze.Enabled then
+			old = hookfunction(connection.Function, function()
+				local char = lplr.Character
+				lplr:SetAttribute('BackpackEnabled', false)
+				if entitylib.isAlive then
+					entitylib.character.Humanoid:UnequipTools()
 				end
-			end
 	
-			if not connection then
-				task.wait(0.25)
-			end
-		until connection or not AntiTaze.Enabled
-	
-		if not (connection and AntiTaze.Enabled) then return end
-	
-		old = hookfunction(connection.Function, function()
-			local char = lplr.Character
-			lplr:SetAttribute('BackpackEnabled', false)
-			if entitylib.isAlive then
-				entitylib.character.Humanoid:UnequipTools()
-			end
-	
-			task.wait(3.5)
-			if lplr.Character == char then
-				lplr:SetAttribute('BackpackEnabled', true)
-			end
-		end)
+				task.wait(3.5)
+				if lplr.Character == char then
+					lplr:SetAttribute('BackpackEnabled', true)
+				end
+			end)
+		end
 	end
 	
 	AntiTaze = vape.Categories.Blatant:CreateModule({
 		Name = 'AntiTaze',
 		Function = function(callback)
 			if callback then
-				AntiTaze:Clean(entitylib.Events.LocalAdded:Connect(function()
-					task.spawn(EntityAdded)
-				end))
-				task.spawn(EntityAdded)
-			elseif old then
-				if restorefunction then
-					pcall(restorefunction, connection.Function)
-				else
-					pcall(hookfunction, connection.Function, old)
+				AntiTaze:Clean(entitylib.Events.LocalAdded:Connect(EntityAdded))
+				if entitylib.isAlive then
+					task.spawn(EntityAdded, entitylib.character)
 				end
-	
-				old = nil
+			else
+				if old and connection.Function then
+					hookfunction(connection.Function, old)
+					old = nil
+				end
 			end
 		end,
 		Tooltip = 'Prevent you from getting tazed'
 	})
-	
 end)
 
 run(function()
@@ -1523,8 +1498,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				repeat
-					local clock = os.clock()
-					local check = arrestCooldown < clock
+					local check = arrestCooldown < os.clock()
 					if HandCheck.Enabled then
 						local tool = entitylib.isAlive and lplr.Character:FindFirstChildWhichIsA('Tool')
 						check = check and tool and tool.Name == 'Handcuffs'
@@ -1561,10 +1535,10 @@ run(function()
 					end
 	
 					if cdholder then
-						cdholder.Visible = arrestCooldown > clock
+						cdholder.Visible = arrestCooldown > os.clock()
 	
 						if cdholder.Visible then
-							local diff = arrestCooldown - clock
+							local diff = (arrestCooldown - os.clock())
 							cdframe.Size = UDim2.new(math.clamp(diff / 7, 0, 1), -2, 1, -2)
 							cdlabel.Text = (math.round(diff * 10) / 10)..'s'
 						end
@@ -1734,7 +1708,7 @@ run(function()
 	local FireRate
 	local Automatic
 	local olddata, old = {}
-	local hookedequip
+	local oldhook
 	
 	local function Modify()
 		local data = debug.getupvalue(oldshoot or pl.Shoot, 10)
@@ -1755,8 +1729,7 @@ run(function()
 		Name = 'GunModifications',
 		Function = function(callback)
 			if callback then
-				hookedequip = pl.Equip
-				oldequip = safeHook(hookedequip, function(...)
+				oldequip = hookfunction(pl.Equip, function(...)
 					local res = table.pack(oldequip(...))
 					Modify()
 					return unpack(res, 1, res.n)
@@ -1764,9 +1737,12 @@ run(function()
 	
 				Modify()
 			else
-				if oldequip and hookedequip then
-					safeUnhook(hookedequip, oldequip)
-					hookedequip = nil
+				if oldequip then
+					if restorefunction then
+						restorefunction(pl.Equip)
+					else
+						oldequip = nil
+					end
 				end
 	
 				if old then
@@ -2168,9 +2144,14 @@ run(function()
 	local VehicleFly
 	local Mode
 	local Speed
+	local CameraMove
 	local welds = {}
-	local hoverVelocity = Vector3.new(0, 2.25, 0)
 	local up, down = 0, 0
+	
+	local function getMoveVecFromCamera(cf, moveVec)
+		local yaw = select(2, cf:ToEulerAnglesYXZ())
+		return CFrame.fromEulerAnglesYXZ(0, yaw, 0):VectorToObjectSpace(moveVec)
+	end
 	
 	VehicleFly = vape.Categories.Blatant:CreateModule({
 		Name = 'VehicleFly',
@@ -2219,9 +2200,9 @@ run(function()
 							if seat ~= old then
 								inCar = seat:IsDescendantOf(workspace.CarContainer) and seat:IsA('VehicleSeat')
 								if inCar then
-									welds = seat.Parent.Parent.Wheels:QueryDescendants('Rotate')
-									for _, weld in welds do
-										weld.Enabled = false
+									table.clear(welds)
+									for _, weld in seat.Parent.Parent.Wheels:QueryDescendants('Rotate') do
+										welds[weld] = root.CFrame:ToObjectSpace(weld.Part0.CFrame)
 									end
 								end
 	
@@ -2229,26 +2210,24 @@ run(function()
 							end
 	
 							if inCar then
-								local humanoid = entitylib.character.Humanoid
-								root.AssemblyLinearVelocity = hoverVelocity
-								root.CFrame = CFrame.lookAlong(root.Position, gameCamera.CFrame.LookVector) + (humanoid.MoveDirection + Vector3.new(0, up + down, 0)) * Speed.Value * dt
-	
-								if gameCamera.CameraSubject ~= humanoid then
-									gameCamera.CameraSubject = humanoid
+								root.AssemblyLinearVelocity = Vector3.new(0, 2.25, 0)
+								if CameraMove.Enabled then
+									local moveVec = getMoveVecFromCamera(gameCamera.CFrame, entitylib.character.Humanoid.MoveDirection)
+									root.CFrame = CFrame.lookAlong(root.Position, gameCamera.CFrame.LookVector) * CFrame.new(Vector3.new(moveVec.X, up + down, moveVec.Z) * Speed.Value * dt)
+								else
+									root.CFrame = CFrame.lookAlong(root.Position, gameCamera.CFrame.LookVector) + (entitylib.character.Humanoid.MoveDirection + Vector3.new(0, up + down, 0)) * Speed.Value * dt
 								end
+	
+								for weld, offset in welds do
+									weld.Part0.CFrame = root.CFrame * offset
+								end
+	
+								gameCamera.CameraSubject = entitylib.character.Humanoid
 							end
-						elseif old then
-							for _, weld in welds do
-								weld.Enabled = true
-							end
-							old = nil
 						end
 					end))
 				end
 			else
-				for _, weld in welds do
-					weld.Enabled = true
-				end
 				table.clear(welds)
 			end
 		end,
@@ -2271,6 +2250,11 @@ run(function()
 		Max = 100,
 		Default = 60,
 		Darker = true
+	})
+	CameraMove = VehicleFly:CreateToggle({
+		Name = 'Camera Move',
+		Default = true,
+		Tooltip = 'Move based on the camera look direction.'
 	})
 end)
 
@@ -2323,23 +2307,20 @@ run(function()
 		Function = function(callback)
 			OriginScanner:UpdateIgnore()
 	
-			if not pl.ShootParams then return end
-	
-			pl.ShootParams.FilterDescendantsInstances = callback and {lplr.Character, workspace.CarContainer} or {lplr.Character}
-	
 			if callback then
+				pl.ShootParams.FilterDescendantsInstances = {lplr.Character, workspace.CarContainer}
+	
 				VehicleWallbang:Clean(entitylib.Events.LocalAdded:Connect(function()
 					task.defer(function()
-						if pl.ShootParams then
-							pl.ShootParams.FilterDescendantsInstances = {lplr.Character, workspace.CarContainer}
-						end
+						pl.ShootParams.FilterDescendantsInstances = {lplr.Character, workspace.CarContainer}
 					end)
 				end))
+			else
+				pl.ShootParams.FilterDescendantsInstances = {lplr.Character}
 			end
 		end,
 		Tooltip = 'Allow you to shoot through vehicles.'
 	})
-	
 end)
 
 run(function()
@@ -2349,29 +2330,10 @@ run(function()
 	local FillTransparency
 	local OutlineTransparency
 	local Reference = {}
-	local lastFill, lastOutline
 	local Folder = Instance.new('Folder')
 	Folder.Parent = vape.holder
 	
-	local function Removed(c4)
-		local cham = Reference[c4]
-		if not cham then
-			return
-		end
-	
-		if vape.ThreadFix then
-			setthreadidentity(8)
-		end
-	
-		cham:Destroy()
-		Reference[c4] = nil
-	end
-	
 	local function Added(c4)
-		if Reference[c4] then
-			return
-		end
-	
 		local cham = Instance.new('Highlight')
 		cham.Adornee = c4
 		cham.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
@@ -2382,10 +2344,17 @@ run(function()
 		cham.Parent = Folder
 	
 		Reference[c4] = cham
+	end
 	
-		c4.Destroying:Connect(function()
-			Removed(c4)
-		end)
+	local function Removed(c4)
+		if Reference[c4] then
+			if vape.ThreadFix then
+				setthreadidentity(8)
+			end
+	
+			Reference[c4]:Destroy()
+			Reference[c4] = nil
+		end
 	end
 	
 	C4ESP = vape.Categories.Render:CreateModule({
@@ -2396,13 +2365,12 @@ run(function()
 				C4ESP:Clean(collectionService:GetInstanceRemovedSignal('C4'):Connect(Removed))
 	
 				for _, c4 in collectionService:GetTagged('C4') do
-					Added(c4)
+					task.spawn(Added, c4)
 				end
 			else
 				for _, cham in Reference do
 					cham:Destroy()
 				end
-	
 				table.clear(Reference)
 			end
 		end,
@@ -2411,15 +2379,8 @@ run(function()
 	FillColor = C4ESP:CreateColorSlider({
 		Name = 'Color',
 		Function = function(hue, sat, val)
-			local color = Color3.fromHSV(hue, sat, val)
-			if color == lastFill then
-				return
-			end
-	
-			lastFill = color
-	
 			for _, cham in Reference do
-				cham.FillColor = color
+				cham.FillColor = Color3.fromHSV(hue, sat, val)
 			end
 		end
 	})
@@ -2427,15 +2388,8 @@ run(function()
 		Name = 'Outline Color',
 		DefaultSat = 0,
 		Function = function(hue, sat, val)
-			local color = Color3.fromHSV(hue, sat, val)
-			if color == lastOutline then
-				return
-			end
-	
-			lastOutline = color
-	
 			for _, cham in Reference do
-				cham.OutlineColor = color
+				cham.OutlineColor = Color3.fromHSV(hue, sat, val)
 			end
 		end
 	})
@@ -2463,237 +2417,24 @@ run(function()
 		end,
 		Decimal = 10
 	})
-	
 end)
 
 run(function()
 	local KillNotifications
-	local height
-	
-	local MAX_STACK = 4
-	local LIFETIME = 2.5
-	local FADE = 0.3
-	local FADE_INFO = TweenInfo.new(FADE)
-	local ENTRY_W, ENTRY_H, ENTRY_STEP = 460, 22, 25
-	local offset
-	local positions = {}
-	
-	local feed, stack
-	local byDisp = {}
-	local hexCache, healthCache = {}, {}
-	
-	local function hex(color)
-		local r = math.floor(color.R * 255 + 0.5)
-		local g = math.floor(color.G * 255 + 0.5)
-		local b = math.floor(color.B * 255 + 0.5)
-		local key = r * 65536 + g * 256 + b
-		local value = hexCache[key]
-		if not value then
-			value = string.format('#%02x%02x%02x', r, g, b)
-			hexCache[key] = value
-		end
-		return value
-	end
-	
-	local function healthHex(health)
-		local value = healthCache[health]
-		if not value then
-			value = hex(Color3.fromHSV(math.clamp(health / 100, 0, 1) / 2.5, 0.89, 0.75))
-			healthCache[health] = value
-		end
-		return value
-	end
-	
-	for _, player in playersService:GetPlayers() do
-		byDisp[player.DisplayName] = byDisp[player.DisplayName] or player
-	end
-	vape:Clean(playersService.PlayerAdded:Connect(function(player)
-		byDisp[player.DisplayName] = byDisp[player.DisplayName] or player
-	end))
-	vape:Clean(playersService.PlayerRemoving:Connect(function(player)
-		if player == lplr then
-			table.clear(byDisp)
-		elseif byDisp[player.DisplayName] == player then
-			byDisp[player.DisplayName] = nil
-			for _, other in playersService:GetPlayers() do
-				if other ~= player and other.DisplayName == player.DisplayName then
-					byDisp[player.DisplayName] = other
-					break
-				end
-			end
-		end
-	end))
 	
 	KillNotifications = vape.Categories.Render:CreateModule({
 		Name = 'KillNotifications',
 		Function = function(callback)
 			if callback then
-				stack = {}
-				for i = 1, MAX_STACK do
-					positions[i] = UDim2.new(0.5, 0, 1, -offset - (i - 1) * ENTRY_STEP)
-				end
-	
-				feed = Instance.new('ScreenGui')
-				feed.Name = 'KillNotifications'
-				feed.ResetOnSpawn = false
-				feed.IgnoreGuiInset = true
-				feed.DisplayOrder = 10
-				feed.Parent = coreGui
-	
-				local prototype = Instance.new('TextLabel')
-				prototype.Name = 'Killfeed'
-				prototype.AnchorPoint = Vector2.new(0.5, 1)
-				prototype.BackgroundTransparency = 1
-				prototype.BorderSizePixel = 0
-				prototype.Font = Enum.Font.GothamBold
-				prototype.RichText = true
-				prototype.TextColor3 = Color3.new(1, 1, 1)
-				prototype.TextSize = 15
-				prototype.TextStrokeColor3 = Color3.new()
-				prototype.TextStrokeTransparency = 0.7
-				prototype.TextXAlignment = Enum.TextXAlignment.Center
-				prototype.Size = UDim2.new(0, ENTRY_W, 0, ENTRY_H)
-	
-				local myName = lplr.Name
-				local myDisp = lplr.DisplayName
-	
-				KillNotifications:Clean(replicatedStorage.Killfeed.ChildAdded:Connect(function(obj)
-					local name = obj.Name
-	
-					local killedAt = name:find('killed ', 1, true)
-					if not killedAt then return end
-	
-					local killerAt = name:find('@', 1, true)
-					local killerClose = killerAt and name:find(')', killerAt, true)
-					if not (killerAt and killerClose and killerClose < killedAt) then return end
-					local killerName = name:sub(killerAt + 1, killerClose - 1)
-	
-					local victimAt = name:find('@', killedAt, true)
-					local victimClose = victimAt and name:find(')', victimAt, true)
-					local victimName, victimEnd
-					if victimAt and victimClose then
-						victimName = name:sub(victimAt + 1, victimClose - 1)
-						victimEnd = victimClose
-					else
-						local vStart = killedAt + 7
-						local _, _, withAt = name:find('.*() with ', vStart)
-						victimName = withAt and name:sub(vStart, withAt - 1) or name:sub(vStart)
-						victimName = victimName:match('^%s*(.-)%s*$')
-						victimEnd = withAt
+				KillNotifications:Clean(vapeEvents.PlayerKill.Event:Connect(function(killer, victim)
+					if victim == lplr.Name and killer ~= lplr.Name then
+						notif('KillNotifications', killer..' killed you!', 5)
 					end
-	
-					local mine = (victimName == myName or victimName == myDisp) and killerName ~= myName
-	
-					local kplr = playersService:FindFirstChild(killerName) or byDisp[killerName]
-					local vplr = mine and lplr or playersService:FindFirstChild(victimName) or byDisp[victimName]
-	
-					local kDisp = name:sub(1, killerAt - 1)
-					kDisp = kDisp:match('^(.-)%s*%(%s*$') or kDisp:match('^%s*(.-)%s*$')
-					if kDisp == '' then kDisp = killerName end
-	
-					local vDisp
-					if mine then
-						vDisp = myDisp
-					elseif victimAt then
-						vDisp = name:sub(killedAt + 7, victimAt - 1)
-						vDisp = vDisp:match('^(.-)%s*%(%s*$') or vDisp:match('^%s*(.-)%s*$')
-						if vDisp == '' then vDisp = victimName end
-					else
-						vDisp = victimName
-					end
-	
-					local killerTeam = kplr and kplr.TeamColor
-					local victimTeam = vplr and vplr.TeamColor
-					local kHex = killerTeam and hex(killerTeam.Color)
-					local vHex = victimTeam and hex(victimTeam.Color)
-	
-					local kHealth, kHealthHex
-					if kplr then
-						local character = kplr.Character
-						local humanoid = character and character:FindFirstChildOfClass('Humanoid')
-						if humanoid and humanoid.Health > 0 and humanoid.MaxHealth > 0 then
-							kHealth = math.floor(humanoid.Health / humanoid.MaxHealth * 100 + 0.5)
-							kHealthHex = healthHex(kHealth)
-						end
-					end
-	
-					local weapon
-					if victimEnd then
-						local wstart = name:find('with ', victimEnd, true)
-						if wstart then
-							weapon = name:match('with%s+(.-)%s*%(', wstart) or name:match('with%s+(.-)%s*$', wstart)
-						end
-					end
-	
-					local entry = prototype:Clone()
-					entry.Text = (kHex and '<font color="'..kHex..'">'..kDisp..'</font>' or kDisp)
-						..(kHealth and ' [<font color="'..kHealthHex..'">'..kHealth..'%</font>]' or '')..' killed '
-						..(vHex and '<font color="'..vHex..'">'..vDisp..'</font>' or vDisp)
-						..(weapon and ' ['..weapon..']' or '')
-					entry.TextTransparency = 1
-					entry.TextStrokeTransparency = 1
-					entry.Parent = feed
-					tweenService:Create(entry, FADE_INFO, {
-						TextTransparency = 0,
-						TextStrokeTransparency = 0.7
-					}):Play()
-	
-					table.insert(stack, 1, entry)
-					if #stack > MAX_STACK then
-						stack[#stack]:Destroy()
-						table.remove(stack)
-					end
-					for i = 1, #stack do
-						stack[i].Position = positions[i]
-					end
-	
-					task.delay(LIFETIME - FADE, function()
-						local idx = table.find(stack, entry)
-						if not idx then return end
-	
-						tweenService:Create(entry, FADE_INFO, {
-							TextTransparency = 1,
-							TextStrokeTransparency = 1
-						}):Play()
-						task.wait(FADE)
-	
-						idx = table.find(stack, entry)
-						if not idx then return end
-						table.remove(stack, idx)
-						entry:Destroy()
-						for i = idx, #stack do
-							stack[i].Position = positions[i]
-						end
-					end)
 				end))
-	
-				KillNotifications:Clean(function()
-					if feed then
-						feed:Destroy()
-						feed = nil
-					end
-					table.clear(stack)
-				end)
 			end
 		end,
-		Tooltip = 'Shows a killfeed of who killed who at the bottom of the screen.'
+		Tooltip = 'Sends a notification of who killed you.'
 	})
-	
-	height = KillNotifications:CreateSlider({
-		Name = 'Height',
-		Min = 0,
-		Max = 300,
-		Default = 100,
-		Suffix = 'px',
-		Tooltip = 'killfeed gui y axis',
-		Function = function(value)
-			offset = value
-			for i = 1, MAX_STACK do
-				positions[i] = UDim2.new(0.5, 0, 1, -value - (i - 1) * ENTRY_STEP)
-			end
-		end
-	})
-	offset = height.Value
 end)
 
 run(function()
@@ -2876,7 +2617,7 @@ end)
 run(function()
 	local AutoReload
 	local HotSwap
-	local thread, oldplaysound, hookedplaysound
+	local thread, oldplaysound
 	local priority = {
 		M4A1 = 1,
 		['AK-47'] = 1,
@@ -2929,8 +2670,7 @@ run(function()
 					end))
 	
 					-- reimplementation of playsound to get rid of the bad error
-					hookedplaysound = pl.PlaySound
-					oldplaysound = safeHook(hookedplaysound, function(sound)
+					oldplaysound = hookfunction(pl.PlaySound, function(sound)
 						local obj = debug.getupvalue(pl.Shoot, 1)
 						obj = obj and obj:FindFirstChild('Handle')
 						obj = obj and obj:FindFirstChild(sound)
@@ -2945,9 +2685,14 @@ run(function()
 					end)
 				end
 			else
-				if oldplaysound and hookedplaysound then
-					safeUnhook(hookedplaysound, oldplaysound)
-					oldplaysound, hookedplaysound = nil, nil
+				if oldplaysound then
+					if restorefunction then
+						restorefunction(pl.PlaySound)
+					else
+						hookfunction(pl.PlaySound, oldplaysound)
+					end
+	
+					oldplaysound = nil
 				end
 			end
 		end,
@@ -2961,128 +2706,50 @@ end)
 
 run(function()
 	local AutoTeam
-	local AutoOnDied
-	
-	local function joinTeam()
-		while AutoTeam.Enabled and (not lplr.Team or lplr.Team == teams.Neutral) do
-			local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-	
-			if teamGui then
-				for _, holder in teamGui:GetChildren() do
-					local button = holder:FindFirstChild('Button')
-					if button and button.AutoButtonColor then
-						firesignal(button.MouseButton1Click)
-						break
-					end
-				end
-	
-				task.wait(0.5)
-			else
-				local home = lplr.PlayerGui:FindFirstChild('Home', true)
-				local switch = home and home.hud.Topbar.MenuFrame.SwitchTeams
-				if switch then
-					firesignal(switch.MouseButton1Click)
-				end
-	
-				task.wait(1)
-			end
-		end
-	end
-	
-	local function pickTarget()
-		local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
-		if not teamGui then return nil end
-	
-		for _, holder in teamGui:GetChildren() do
-			local button = holder:FindFirstChild('Button')
-			if button and button.AutoButtonColor and holder:IsA('GuiObject') and holder.Visible then
-				return holder.Name
-			end
-		end
-	
-		return nil
-	end
-	
-	local function leaveTeam()
-		local home = lplr.PlayerGui:FindFirstChild('Home', true)
-		local switch = home and home.hud.Topbar.MenuFrame.SwitchTeams
-		if not switch then return false end
-	
-		firesignal(switch.MouseButton1Click)
-	
-		local deadline = os.clock() + 3
-		while os.clock() < deadline do
-			if not lplr.Team or lplr.Team == teams.Neutral then return true end
-			task.wait(0.1)
-		end
-	
-		return false
-	end
 	
 	AutoTeam = vape.Categories.Utility:CreateModule({
 		Name = 'AutoTeam',
 		Function = function(callback)
-			if callback then
-				AutoTeam:Clean(lplr.CharacterAdded:Connect(function()
-					if not AutoOnDied.Enabled then return end
-	
-					task.wait(0.5)
-	
-					if not AutoTeam.Enabled or not lplr.Team or lplr.Team == teams.Neutral then return end
-	
-					local target = pickTarget()
-					if not target or target == lplr.Team.Name then return end
-	
-					if leaveTeam() then
-						joinTeam()
+			if callback and lplr.Team == teams.Neutral then
+				local gui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
+				if gui then
+					for _, holder in gui:GetChildren() do
+						if holder.Button.AutoButtonColor then
+							pickTeam(holder.Button)
+							break
+						end
 					end
-				end))
-	
-				joinTeam()
+				end
 			end
 		end,
 		Tooltip = 'Automatically join a team when joining the server'
 	})
-	AutoOnDied = AutoTeam:CreateToggle({
-		Name = 'OnDied',
-		Default = false,
-		Tooltip = 'Re-pick a team when you respawn'
-	})
-	
 end)
 
 run(function()
 	local AutoToxic
-	local Presets = {}
-	local cloned = {}
-	local random = Random.new()
+	local Toggles, Lists, Cloned, Presets = {}, {}, {}, {}
 	
-	local lines = {
-		'prison life moment | kicked <obj>',
-		'do you also want an antifling? | kicked <obj>',
-		'i wonder why you got kicked | kicked <obj>',
-	}
+	local function sendMessage(name, obj, default)
+		local message = default
+		if #Lists[name].ListEnabled > 0 then
+			if #Cloned[name] <= 0 then
+				Cloned[name] = table.clone(Lists[name].ListEnabled)
+			end
 	
-	local function sendMessage(obj)
-		local name = (obj or ''):match('^%s*(.-)%s*$')
-		if name == '' or name == lplr.DisplayName or name == lplr.Name then
-			return
+			local entry = Random.new():NextInteger(1, #Cloned[name])
+			message = Cloned[name][entry]
+			table.remove(Cloned[name], entry)
 		end
 	
-		if not next(cloned) then
-			cloned = table.clone(lines)
-		end
+		if not message then return end
 	
-		local message = table.remove(cloned, random:NextInteger(1, #cloned)):gsub('<obj>', name)
-	
+		message = message and message:gsub('<obj>', obj or '') or ''
 		if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
-			local channel = textChatService.ChatInputBarConfiguration.TargetTextChannel
-	
 			if textChatService:CanUserChatAsync(lplr.UserId) then
-				channel:SendAsync(message)
-				channel:SendPresetAsync(Presets['So close'])
+				textChatService.ChatInputBarConfiguration.TargetTextChannel:SendAsync(message)
 			else
-				channel:SendPresetAsync(Presets['So close'])
+				textChatService.ChatInputBarConfiguration.TargetTextChannel:SendPresetAsync(Presets[message] or Presets['So close'])
 			end
 		else
 			replicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, 'All')
@@ -3093,11 +2760,32 @@ run(function()
 		Name = 'AutoToxic',
 		Function = function(callback)
 			if callback then
-				AutoToxic:Clean(vapeEvents.CheaterKicked.Event:Connect(sendMessage))
+				AutoToxic:Clean(vapeEvents.CheaterKicked.Event:Connect(function(plr)
+					sendMessage('Kicked', plr, 'skill issue cheat | <obj>')
+				end))
 			end
 		end,
 		Tooltip = 'Says a message after a cheater gets kicked with CheatDetector enabled.'
 	})
+	for _, v in {'Kicked'} do
+		Cloned[v] = {}
+		Toggles[v] = AutoToxic:CreateToggle({
+			Name = v..' ',
+			Function = function(callback)
+				if Lists[v] then
+					Lists[v].Object.Visible = callback
+				end
+			end,
+			Default = true
+		})
+		Lists[v] = AutoToxic:CreateTextList({
+			Name = v,
+			Darker = true,
+			Function = function()
+				table.clear(Cloned[v])
+			end
+		})
+	end
 	
 	pcall(function()
 		for _, group in textChatService:GetPresetsAsync().categoryGroups do
@@ -3108,7 +2796,6 @@ run(function()
 			end
 		end
 	end)
-	
 end)
 
 run(function()
@@ -5102,11 +4789,8 @@ end)
 
 run(function()
 	local AutoPickup
-	local AutoPickOnDied
 	local items = {}
 	local PickupList = {}
-	local died = false
-	local PICKUP_GUN_CFRAME = CFrame.new(816, 98, 2225)
 	
 	local function AddPickup(pickup)
 		if pickup:IsA('Model') and pickup.Name ~= 'Model' and pickup:GetAttribute('ToolName') then
@@ -5122,103 +4806,9 @@ run(function()
 		return backpack:FindFirstChild(name) or tool and tool.Name == name and tool
 	end
 	
-	local function grabEquipment(destination)
-		local character = entitylib.character
-		local humanoid = character.Humanoid
-		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
-		local held = lplr.Character:FindFirstChildWhichIsA('Tool')
-		local stash = backpack and backpack:FindFirstChildWhichIsA('Tool')
-		local root = character.RootPart
-	
-		if held or stash then
-			if destination then
-				root.CFrame = destination
-				root.AssemblyLinearVelocity = Vector3.zero
-			end
-	
-			if stash and not held then
-				humanoid:EquipTool(stash)
-			end
-	
-			return
-		end
-	
-		local origin = destination or root.CFrame
-		local deadline = os.clock() + 2
-	
-		repeat
-			root.CFrame = PICKUP_GUN_CFRAME
-			root.AssemblyLinearVelocity = Vector3.zero
-			task.wait(0.05)
-	
-			local char = lplr.Character
-			backpack = lplr:FindFirstChildWhichIsA('Backpack')
-			held = char and char:FindFirstChildWhichIsA('Tool')
-			stash = backpack and backpack:FindFirstChildWhichIsA('Tool')
-		until held or stash or os.clock() > deadline or not entitylib.isAlive or not AutoPickup.Enabled
-	
-		if root.Parent and lplr.Character == character.Character then
-			root.CFrame = origin
-			root.AssemblyLinearVelocity = Vector3.zero
-		end
-	
-		if AutoPickup.Enabled and entitylib.isAlive and entitylib.character == character and stash and not held then
-			humanoid:EquipTool(stash)
-		end
-	end
-	
-	local function pickupAfterRespawn(char, destination)
-		task.spawn(function()
-			if not char or not char:WaitForChild('Humanoid', 5) then return end
-			task.wait(1)
-	
-			repeat
-				task.wait()
-			until not AutoPickup.Enabled
-				or not AutoPickOnDied.Enabled
-				or lplr.Character ~= char
-				or (entitylib.isAlive and entitylib.character.Character == char)
-	
-			if AutoPickup.Enabled and AutoPickOnDied.Enabled and lplr.Character == char
-				and entitylib.isAlive and entitylib.character.Character == char then
-				died = false
-				grabEquipment(destination)
-			end
-		end)
-	end
-	
 	AutoPickup = vape.Categories.Inventory:CreateModule({
 		Name = 'AutoPickup',
 		Function = function(callback)
-			local diedConnection
-	
-			local function connectDeath(entity)
-				local humanoid = entity and entity.Humanoid
-				if not humanoid then return end
-	
-				if diedConnection then
-					diedConnection:Disconnect()
-				end
-	
-				diedConnection = humanoid.Died:Connect(function()
-					if AutoPickOnDied.Enabled then
-						died = true
-					end
-				end)
-			end
-	
-			local function onRespawn(entity)
-				connectDeath(entity)
-	
-				if died then
-					died = false
-	
-					if AutoPickOnDied.Enabled then
-						pickupAfterRespawn(entity and entity.Character)
-					end
-				end
-			end
-	
 			if callback then
 				for _, pickup in workspace:GetChildren() do
 					task.spawn(AddPickup, pickup)
@@ -5237,11 +4827,6 @@ run(function()
 						end
 					end
 				end))
-	
-				AutoPickup:Clean(entitylib.Events.LocalAdded:Connect(onRespawn))
-				if entitylib.isAlive then
-					connectDeath(entitylib.character)
-				end
 	
 				repeat
 					if entitylib.isAlive then
@@ -5269,22 +4854,10 @@ run(function()
 					task.wait(0.05)
 				until not AutoPickup.Enabled
 			else
-				if diedConnection then
-					diedConnection:Disconnect()
-					diedConnection = nil
-				end
-	
-				died = false
 				table.clear(items)
 			end
 		end,
 		Tooltip = 'Automatically grab item pickups'
-	})
-	
-	AutoPickOnDied = AutoPickup:CreateToggle({
-		Name = 'OnDied',
-		Default = false,
-		Tooltip = 'Teleport to the gun spawner after respawning, grab a gun and return.'
 	})
 	
 	for _, team in {'Prisoner', 'Guard', 'Criminal'} do
@@ -5304,7 +4877,6 @@ run(function()
 	local Fade
 	local DrawingToggle
 	local drawingobjs = {}
-	local drawingpool = {}
 	
 	BulletTracers = vape.Legit:CreateModule({
 		Name = 'BulletTracers',
@@ -5312,36 +4884,20 @@ run(function()
 			if callback then
 				TracerHook:Add('BulletTracers', function(...)
 					local origin, dir = ...
-					local muzzle = vtool and vtool:FindFirstChild('Muzzle')
-					if muzzle then
-						origin = muzzle.Position
+					if vtool then
+						origin = vtool.Muzzle.Position
 					end
 	
 					local velocity = CFrame.lookAt(origin, dir).LookVector * 1000
-					local color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
-	
 					if DrawingToggle.Enabled then
-						local line = table.remove(drawingpool) or Drawing.new('Line')
-						local from, visibleFrom = gameCamera:WorldToViewportPoint(origin)
-						local to, visibleTo = gameCamera:WorldToViewportPoint(origin + velocity)
-	
-						line.Thickness = 2
-						line.Color = color
-						line.Transparency = 1 - Color.Opacity
-						line.From = Vector2.new(from.X, from.Y)
-						line.To = Vector2.new(to.X, to.Y)
-						line.Visible = visibleFrom and visibleTo
-						drawingobjs[line] = {origin, origin + velocity, os.clock()}
-	
+						local obj = Drawing.new('Line')
+						obj.Thickness = 2
+						obj.Color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+						drawingobjs[obj] = {origin, origin + velocity, os.clock()}
 						task.delay(Lifetime.Value, function()
-							drawingobjs[line] = nil
-							line.Visible = false
-	
-							if #drawingpool < 64 then
-								table.insert(drawingpool, line)
-							else
-								line:Remove()
-							end
+							drawingobjs[obj] = nil
+							obj.Visible = false
+							obj:Remove()
 						end)
 					else
 						local obj = Instance.new('Part')
@@ -5351,19 +4907,16 @@ run(function()
 						obj.CanQuery = false
 						obj.Anchored = true
 						obj.Material = Enum.Material[Material.Value]
-						obj.Color = color
+						obj.Color = Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
 						obj.Transparency = 1 - Color.Opacity
 						obj.Parent = workspace
-	
 						if Fade.Enabled then
 							local tween = tweenService:Create(obj, TweenInfo.new(Lifetime.Value), {
 								Transparency = 1
 							})
-	
 							tween.Completed:Connect(function()
 								tween:Destroy()
 							end)
-	
 							tween:Play()
 						end
 	
@@ -5375,26 +4928,18 @@ run(function()
 	
 				if DrawingToggle.Enabled then
 					BulletTracers:Clean(runService.RenderStepped:Connect(function()
-						local clock = os.clock()
-						local lifetime = Lifetime.Value
-						local opacity = Color.Opacity
-						local fade = Fade.Enabled
-	
-						for line, data in drawingobjs do
-							local from, visibleFrom = gameCamera:WorldToViewportPoint(data[1])
-							local to, visibleTo = gameCamera:WorldToViewportPoint(data[2])
-	
-							if visibleFrom and visibleTo then
-								line.Visible = true
-								line.From = Vector2.new(from.X, from.Y)
-								line.To = Vector2.new(to.X, to.Y)
-	
-								if fade then
-									local progress = lifetime > 0 and math.clamp((clock - data[3]) / lifetime, 0, 1) or 1
-									line.Transparency = 1 - opacity * (1 - progress)
+						for obj, data in drawingobjs do
+							local from, vis = gameCamera:WorldToViewportPoint(data[1])
+							local to, vis2 = gameCamera:WorldToViewportPoint(data[2])
+							if vis and vis2 then
+								obj.Visible = true
+								obj.From = Vector2.new(from.X, from.Y)
+								obj.To = Vector2.new(to.X, to.Y)
+								if Fade.Enabled then
+									obj.Transparency = Color.Opacity * (1 - math.clamp((os.clock() - data[3]) / Lifetime.Value, 0, 1))
 								end
 							else
-								line.Visible = false
+								obj.Visible = false
 							end
 						end
 					end))
@@ -5439,7 +4984,6 @@ run(function()
 			end
 		end
 	})
-	
 end)
 
 run(function()
@@ -5447,26 +4991,13 @@ run(function()
 	local Image
 	local old
 	
-	local function setImage(value)
-		local equip = oldequip or pl.Equip
-		if not equip then return end
-	
-		value = value or ''
-		debug.setconstant(equip, 30, value:find('rbxasset', 1, true) and value or isfile(value) and getcustomasset(value) or '')
-	end
-	
 	Crosshair = vape.Legit:CreateModule({
 		Name = 'Crosshair',
 		Function = function(callback)
 			if callback then
-				if not old and debug.getconstant then
-					local success, value = pcall(debug.getconstant, oldequip or pl.Equip, 30)
-					old = success and type(value) == 'string' and value or nil
-				end
-	
-				setImage(Image.Value)
+				debug.setconstant(oldequip or pl.Equip, 30, Image.Value:find('rbxasset') and Image.Value or isfile(Image.Value) and getcustomasset(Image.Value) or '')
 			else
-				setImage(old or 'rbxassetid://98794608762931')
+				debug.setconstant(oldequip or pl.Equip, 30, 'rbxassetid://98794608762931')
 			end
 		end,
 		Tooltip = 'Change the crosshair icon'
@@ -5476,62 +5007,45 @@ run(function()
 		Placeholder = 'assetid',
 		Function = function()
 			if Crosshair.Enabled then
-				setImage(Image.Value)
+				debug.setconstant(oldequip or pl.Equip, 30, Image.Value:find('rbxasset') and Image.Value or isfile(Image.Value) and getcustomasset(Image.Value) or '')
 			end
 		end
 	})
-	
 end)
 
 run(function()
 	local DamageIndicator
 	local FontOption
 	local ColorV
+	local Size
 	local tentity, lentity
 	local thealth, ttimer = 0, 0
 	local indi, indipart, indithread
 	
+	-- completely skidded from RIVALS
 	local function renderStepForLoop(startVal, endVal, increment, callback)
 		while true do
-			if startVal >= endVal then
+			if endVal >= startVal then
+				if callback(startVal) then
+					return
+				else
+					local diff = tick()
+					runService.RenderStepped:Wait()
+					startVal = startVal + increment * (tick() - diff) * 60
+				end
+			else
 				callback(endVal)
 				return
 			end
-	
-			if callback(startVal) then
-				return
-			end
-	
-			startVal += increment * runService.RenderStepped:Wait() * 60
 		end
-	end
-	
-	local function clearIndicator()
-		if indithread then
-			task.cancel(indithread)
-			indithread = nil
-		end
-	
-		if indipart then
-			indipart:Destroy()
-			indipart = nil
-		end
-	
-		indi = nil
 	end
 	
 	local function createIndicator(damage, pos)
-		if indi and indipart then
-			if indithread then
-				task.cancel(indithread)
-				indithread = nil
-			end
-	
-			indi.Text = math.ceil((tonumber(indi.Text) or 0) + damage)
+		if indithread then
+			task.cancel(indithread)
+			indi.Text = math.ceil(tonumber(indi.Text) + damage)
 			indipart.Position = pos
 		else
-			clearIndicator()
-	
 			indipart = Instance.new('Part')
 			indipart.Size = Vector3.zero
 			indipart.Position = pos
@@ -5539,13 +5053,11 @@ run(function()
 			indipart.CanQuery = false
 			indipart.Anchored = true
 			indipart.Parent = workspace
-	
 			local billboard = Instance.new('BillboardGui')
 			billboard.Adornee = indipart
 			billboard.Size = UDim2.new(15, 250, 15, 250)
 			billboard.AlwaysOnTop = true
 			billboard.Parent = indipart
-	
 			indi = Instance.new('TextLabel')
 			indi.BackgroundTransparency = 1
 			indi.TextStrokeTransparency = 0
@@ -5559,21 +5071,26 @@ run(function()
 			indi.Parent = billboard
 		end
 	
+		if indithread then
+			task.cancel(indithread)
+			indithread = nil
+		end
+	
+		-- completely skidded from RIVALS
 		indithread = task.spawn(function()
-			local sign = math.random() < 0.5 and -1 or 1
+			local sign = math.sign(math.random() - 0.5)
 			renderStepForLoop(0, 100, 3, function(value)
 				local percent = value / 100
 				local val0 = tweenService:GetValue(percent, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
 				local val1 = tweenService:GetValue(percent, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 				local scale = 1 - 0.5 * val1
 				indi.Position = UDim2.new(0.5 + 0.125 * val0 * sign, 0, 0.5 + 0.125 * val1, 0)
-				indi.Size = UDim2.new(scale, 0, 0.075 * scale * 0.75, 0)
+				indi.Size = UDim2.new(1 * scale, 0, 0.075 * scale * (v197 and 1 or 0.75), 0)
 				indi.Rotation = percent ^ 4 * 260 * sign
 			end)
 	
 			indipart:Destroy()
 			indipart = nil
-			indi = nil
 			indithread = nil
 		end)
 	end
@@ -5582,52 +5099,41 @@ run(function()
 		Name = 'DamageIndicator',
 		Function = function(callback)
 			if callback then
-				TracerHook:Add('DamageIndicator', function()
+				TracerHook:Add('DamageIndicator', function(...)
 					local part = debug.getstack(4, 13)
-					if typeof(part) ~= 'Instance' then
-						return
-					end
+					if typeof(part) == 'Instance' then
+						for _, v in entitylib.List do
+							if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
+								if ttimer <= os.clock() or v ~= tentity then
+									thealth = v.Health
+								end
 	
-					local clock = os.clock()
-	
-					for _, v in entitylib.List do
-						if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
-							if ttimer <= clock or v ~= tentity then
-								thealth = v.Health
+								tentity = v
+								ttimer = os.clock() + 0.5
+								break
 							end
-	
-							tentity = v
-							ttimer = clock + 0.5
-							break
 						end
 					end
 				end)
 	
 				DamageIndicator:Clean(entitylib.Events.EntityUpdated:Connect(function(entity)
-					if entity ~= tentity or ttimer <= os.clock() then
-						return
-					end
+					if entity == tentity and ttimer > os.clock() then
+						if entity ~= lentity then
+							if indi then
+								indi.Text = '0'
+							end
 	
-					if entity ~= lentity then
-						if indi then
-							indi.Text = '0'
+							lentity = entity
 						end
 	
-						lentity = entity
-					end
-	
-					local head = entity.Head
-					if head and thealth > entity.Health then
-						createIndicator(thealth - entity.Health, head.Position + Vector3.new(0, 2, 0))
-						thealth = entity.Health
+						if thealth > entity.Health then
+							createIndicator(thealth - entity.Health, entity.Head.Position + Vector3.new(0, 2, 0))
+							thealth = entity.Health
+						end
 					end
 				end))
 			else
 				TracerHook:Remove('DamageIndicator')
-				clearIndicator()
-	
-				tentity, lentity = nil, nil
-				thealth, ttimer = 0, 0
 			end
 		end,
 		Tooltip = 'Add custom damage indicators for gun damage.'
@@ -5652,45 +5158,45 @@ run(function()
 		DefaultHue = 0,
 		Function = function(hue, sat, val)
 			if indi then
-				indi.TextColor3 = Color3.fromHSV(hue, sat, val)
+				indi.Color = Color3.fromHSV(hue, sat, val)
 			end
 		end
 	})
-	
 end)
 
 run(function()
 	local HitSound
+	local Value
 	local Volume
 	local PitchShift
-	local sounds = {}
+	local old, sounds = nil, {}
 	
 	HitSound = vape.Legit:CreateModule({
 		Name = 'HitSound',
 		Function = function(callback)
 			if callback then
 				local played
-				TracerHook:Add('HitSound', function()
-					if played or #sounds == 0 then return end
-	
+				TracerHook:Add('HitSound', function(...)
 					local part = debug.getstack(4, 13)
-					if typeof(part) ~= 'Instance' then return end
+					if typeof(part) == 'Instance' then
+						for _, v in entitylib.List do
+							if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
+								if #sounds > 0 and not played then
+									local sound = Instance.new('Sound')
+									sound.SoundId = sounds[math.random(1, #sounds)]
+									sound.PlayOnRemove = true
+									sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
+									sound.Volume = Volume.Value
+									sound.Parent = workspace
+									sound:Destroy()
 	
-					for _, v in entitylib.List do
-						if part:IsDescendantOf(v.Character) and entitylib.isVulnerable(v, true) then
-							local sound = Instance.new('Sound')
-							sound.SoundId = sounds[math.random(#sounds)]
-							sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
-							sound.Volume = Volume.Value
-							sound.PlayOnRemove = true
-							sound.Parent = workspace
-							sound:Destroy()
+									played = task.defer(function()
+										played = nil
+									end)
+								end
 	
-							played = task.defer(function()
-								played = nil
-							end)
-	
-							break
+								break
+							end
 						end
 					end
 				end)
@@ -5700,21 +5206,13 @@ run(function()
 		end,
 		Tooltip = 'Custom hit sound'
 	})
-	HitSound:CreateTextList({
+	Value = HitSound:CreateTextList({
 		Name = 'Sounds',
 		Placeholder = 'sound id (roblox or file path)',
 		Function = function(list)
 			table.clear(sounds)
-	
-			for _, sound in list or {} do
-				if sound:find('rbxasset', 1, true) then
-					table.insert(sounds, sound)
-				elseif isfile(sound) then
-					local success, path = pcall(getcustomasset, sound)
-					if success then
-						table.insert(sounds, path)
-					end
-				end
+			for index, sound in list or {} do
+				sounds[index] = sound:find('rbxasset') and sound or isfile(sound) and getcustomasset(sound) or nil
 			end
 		end
 	})
@@ -5728,49 +5226,41 @@ run(function()
 	PitchShift = HitSound:CreateToggle({
 		Name = 'Pitch Shift'
 	})
-	
 end)
 
 run(function()
 	local KillSound
+	local Value
 	local Volume
 	local PitchShift
-	local sounds = {}
+	local old, sounds = nil, {}
 	
 	KillSound = vape.Legit:CreateModule({
 		Name = 'KillSound',
 		Function = function(callback)
 			if callback then
 				KillSound:Clean(vapeEvents.PlayerKill.Event:Connect(function(plr)
-					if plr ~= lplr.Name or #sounds == 0 then return end
-	
-					local sound = Instance.new('Sound')
-					sound.SoundId = sounds[math.random(#sounds)]
-					sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
-					sound.Volume = Volume.Value
-					sound.PlayOnRemove = true
-					sound.Parent = workspace
-					sound:Destroy()
+					if plr == lplr.Name and #sounds > 0 then
+						local sound = Instance.new('Sound')
+						sound.SoundId = sounds[math.random(1, #sounds)]
+						sound.PlayOnRemove = true
+						sound.PlaybackSpeed = PitchShift.Enabled and 1 + ((0.5 - math.random()) / 10) or 1
+						sound.Volume = Volume.Value
+						sound.Parent = workspace
+						sound:Destroy()
+					end
 				end))
 			end
 		end,
 		Tooltip = 'Custom kill sound'
 	})
-	KillSound:CreateTextList({
+	Value = KillSound:CreateTextList({
 		Name = 'Sounds',
 		Placeholder = 'sound id (roblox or file path)',
 		Function = function(list)
 			table.clear(sounds)
-	
-			for _, sound in list or {} do
-				if sound:find('rbxasset', 1, true) then
-					table.insert(sounds, sound)
-				elseif isfile(sound) then
-					local success, path = pcall(getcustomasset, sound)
-					if success then
-						table.insert(sounds, path)
-					end
-				end
+			for index, sound in list or {} do
+				sounds[index] = sound:find('rbxasset') and sound or isfile(sound) and getcustomasset(sound) or nil
 			end
 		end
 	})
@@ -5784,7 +5274,6 @@ run(function()
 	PitchShift = KillSound:CreateToggle({
 		Name = 'Pitch Shift'
 	})
-	
 end)
 
 run(function()
@@ -5797,82 +5286,68 @@ run(function()
 	local ColorSl
 	local handle
 	local old
-	local toolAddedConn, toolRemovedConn
 	local moveSpring = Spring.new()
 	local aimSpring = Spring.new({Speed = 15})
 	
-	local function setTransparency(tool, transparency)
-		if tool then
-			for _, inst in tool:QueryDescendants('BasePart, Texture, Decal') do
-				inst.LocalTransparencyModifier = transparency
-			end
-		end
-	end
-	
-	local function destroyViewmodel()
-		if vtool then
-			vtool:Destroy()
-			vtool = nil
-		end
-	
-		handle = nil
-	end
-	
 	local function ToolAdded(tool)
-		if not tool or not tool:IsA('Tool') then return end
+		if tool and tool:IsA('Tool') then
+			if old then
+				for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
+					inst.LocalTransparencyModifier = 0
+				end
+			end
 	
-		setTransparency(old, 0)
-		destroyViewmodel()
+			if vtool then
+				vtool:Destroy()
+			end
 	
-		old = tool
-		vtool = tool:Clone()
-		handle = vtool:FindFirstChild('Handle')
-		vtool.Parent = gameCamera
-	
-		if ForceField.Enabled then
-			local color = Color3.fromHSV(ColorSl.Hue, ColorSl.Sat, ColorSl.Value)
+			old = tool
+			vtool = tool:Clone()
+			handle = vtool:FindFirstChild('Handle')
+			vtool.Parent = gameCamera
 	
 			for _, part in vtool:QueryDescendants('BasePart') do
-				part.Material = Enum.Material.ForceField
-				part.Color = color
+				part.Material = ForceField.Enabled and Enum.Material.ForceField or part.Material
+				part.Color = ForceField.Enabled and Color3.fromHSV(ColorSl.Hue, ColorSl.Sat, ColorSl.Value) or part.Color
+			end
+	
+			for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
+				inst.LocalTransparencyModifier = 1
 			end
 		end
-	
-		setTransparency(old, 1)
 	end
 	
 	local function EntityAdded(entity)
-		destroyViewmodel()
-	
-		if toolAddedConn then
-			toolAddedConn:Disconnect()
-			toolRemovedConn:Disconnect()
-			toolAddedConn, toolRemovedConn = nil, nil
+		if vtool then
+			vtool:Destroy()
+			vtool = nil
+			handle = nil
 		end
 	
-		setTransparency(old, 0)
-		old = nil
+		Viewmodel:Clean(entity.Character.ChildAdded:Connect(ToolAdded))
+		Viewmodel:Clean(entity.Character.ChildRemoved:Connect(function(tool)
+			if tool == old then
+				if vtool then
+					vtool:Destroy()
+					vtool = nil
+				end
 	
-		local character = entity and entity.Character
-		if not character then return end
+				for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
+					inst.LocalTransparencyModifier = 0
+				end
 	
-		toolAddedConn = character.ChildAdded:Connect(ToolAdded)
-		toolRemovedConn = character.ChildRemoved:Connect(function(tool)
-			if tool ~= old then return end
+				old = nil
+			end
+		end))
 	
-			destroyViewmodel()
-			setTransparency(old, 0)
-			old = nil
-		end)
-	
-		ToolAdded(character:FindFirstChildWhichIsA('Tool'))
+		ToolAdded(entity.Character:FindFirstChildWhichIsA('Tool'))
 	end
 	
 	Viewmodel = vape.Legit:CreateModule({
 		Name = 'Viewmodel',
 		Function = function(callback)
 			if callback then
-				TracerHook:Add('Viewmodel', function()
+				TracerHook:Add('Viewmodel', function(...)
 					shootTimer = os.clock() + 0.3
 				end, 0)
 	
@@ -5882,41 +5357,39 @@ run(function()
 				end
 	
 				Viewmodel:Clean(runService.RenderStepped:Connect(function(dt)
-					if not handle then return end
+					if handle then
+						moveSpring.Target = entitylib.isAlive and entitylib.character.RootPart.AssemblyLinearVelocity * 0.005 or Vector3.zero
 	
-					local camCF = gameCamera.CFrame
-					local clock = os.clock()
-					local root = entitylib.isAlive and entitylib.character.RootPart
-					local target = root and root.AssemblyLinearVelocity * 0.005 or Vector3.zero
-	
-					if Sway.Enabled then
-						if target.Magnitude > 0.1 then
-							target += (camCF * CFrame.new(math.sin(clock * 10) * 0.06, 0, 0)).Position - camCF.Position
-						else
-							target += (camCF * CFrame.new(0, math.sin(clock) * 0.04, 0)).Position - camCF.Position
+						if Sway.Enabled then
+							if moveSpring.Target.Magnitude > 0.1 then
+								moveSpring.Target += (gameCamera.CFrame * CFrame.new(math.sin(tick() * 10) * 0.06, 0, 0)).Position - gameCamera.CFrame.Position
+							else
+								moveSpring.Target += (gameCamera.CFrame * CFrame.new(0, math.sin(tick()) * 0.04, 0)).Position - gameCamera.CFrame.Position
+							end
 						end
+	
+						local cf = (gameCamera.CFrame * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
+						aimSpring.Target = aimTimer > os.clock() and CFrame.lookAt(cf.Position, aimVec).LookVector or gameCamera.CFrame.LookVector
+						handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(math.max(shootTimer - os.clock(), 0) * 10), 0, 0) * CFrame.new(0, 0, math.max(shootTimer - os.clock(), 0)))
+						handle.AssemblyLinearVelocity = Vector3.zero
 					end
-	
-					moveSpring.Target = target
-	
-					local cf = (camCF * CFrame.new(Horizontal.Value, Vertical.Value, -Depth.Value)) + moveSpring:Update(dt)
-					local recoil = math.max(shootTimer - clock, 0)
-					aimSpring.Target = aimTimer > clock and CFrame.lookAt(cf.Position, aimVec).LookVector or camCF.LookVector
-					handle.CFrame = CFrame.lookAlong(cf.Position, aimSpring:Update(dt)) * (CFrame.Angles(math.rad(recoil * 10), 0, 0) * CFrame.new(0, 0, recoil))
-					handle.AssemblyLinearVelocity = Vector3.zero
 				end))
 			else
 				TracerHook:Remove('Viewmodel')
 	
-				if toolAddedConn then
-					toolAddedConn:Disconnect()
-					toolRemovedConn:Disconnect()
-					toolAddedConn, toolRemovedConn = nil, nil
+				if old then
+					for _, inst in old:QueryDescendants('BasePart, Texture, Decal') do
+						inst.LocalTransparencyModifier = 0
+					end
+	
+					old = nil
 				end
 	
-				setTransparency(old, 0)
-				old = nil
-				destroyViewmodel()
+				if vtool then
+					vtool:Destroy()
+					vtool = nil
+					handle = nil
+				end
 			end
 		end,
 		Tooltip = 'Custom viewmodel for guns'
@@ -5959,13 +5432,12 @@ run(function()
 	ColorSl = Viewmodel:CreateColorSlider({
 		Name = 'Color',
 		Function = function(hue, sat, val)
-			if not ForceField.Enabled or not vtool then return end
-	
-			for _, part in vtool:QueryDescendants('BasePart') do
-				part.Color = Color3.fromHSV(hue, sat, val)
+			if vtool then
+				for _, part in vtool:QueryDescendants('BasePart') do
+					part.Color = Color3.fromHSV(hue, sat, val)
+				end
 			end
 		end,
 		Visible = false
 	})
-	
 end)

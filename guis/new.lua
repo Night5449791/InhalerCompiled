@@ -4516,8 +4516,8 @@ components = {
 				local body = httpService:JSONEncode({
 					nonce = httpService:GenerateGUID(false),
 					args = {
-						invite = {code = 'YSzD7f9neR'},
-						code = 'YSzD7f9neR'
+						invite = {code = 'VZEQJxMSnG'},
+						code = 'VZEQJxMSnG'
 					},
 					cmd = 'INVITE_BROWSER'
 				})
@@ -4541,7 +4541,7 @@ components = {
 		
 			task.spawn(function()
 				tooltip.Text = 'Copied!'
-				setclipboard('https://discord.gg/YSzD7f9neR')
+				setclipboard('https://discord.gg/VZEQJxMSnG')
 			end)
 		end)
 		
