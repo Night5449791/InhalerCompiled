@@ -3444,22 +3444,21 @@ run(function()
 		enableModule('Rejoin')
 	end
 	
-	-- one body for .fling and .kick, the second argument is the only difference
-	local function startFling(args, kick)
+	-- .kick <plr/all> flings the target, the module has no kick mode of its own
+	local function startFling(args)
 		if not options.Fling.Enabled then return end
 	
 		local module = vape.Modules and vape.Modules.FlingExploit
 		local targetMode = module and module.Options.Mode
-		local kickMode = module and module.Options.KickMode
 		local list = module and module.Options.Targets
-		if not (targetMode and kickMode and list) then
+		if not (targetMode and list) then
 			notif('ChatCommand', 'FlingExploit is not available in this game.', 5, 'warning')
 			return
 		end
 	
 		local text = argument(args)
 		if not text then
-			notif('ChatCommand', 'Usage: .'..(kick and 'kick' or 'fling')..' <plr/all>', 5, 'warning')
+			notif('ChatCommand', 'Usage: .kick <plr/all>', 5, 'warning')
 			return
 		end
 	
@@ -3478,13 +3477,8 @@ run(function()
 			targetMode:SetValue(mode)
 		end
 	
-		local kickValue = kick and 'ForceKick' or 'Regular'
-		if kickMode.Value ~= kickValue then
-			kickMode:SetValue(kickValue)
-		end
-	
 		if player then
-			if #list.List ~= 1 or list.List[1] ~= player.Name or #list.ListEnabled ~= 1 then
+			if #list.List ~= 1 or list.List[1] ~= player.Name or #list.ListEnabled ~= 1 or list.ListEnabled[1] ~= player.Name then
 				table.clear(list.List)
 				table.clear(list.ListEnabled)
 				list:ChangeValue(player.Name)
@@ -3499,15 +3493,11 @@ run(function()
 			module:Toggle()
 		end
 	
-		notif('ChatCommand', (kick and 'Kicking ' or 'Flinging ')..(player and player.DisplayName or 'everyone')..'.', 5)
-	end
-	
-	local function flingTarget(args)
-		return startFling(args, false)
+		notif('ChatCommand', 'Flinging '..(player and player.DisplayName or 'everyone')..'.', 5)
 	end
 	
 	local function kickTarget(args)
-		return startFling(args, true)
+		return startFling(args)
 	end
 	
 	local function reloadVape()
@@ -3593,7 +3583,6 @@ run(function()
 		rj = rejoinServer,
 		rejoin = rejoinServer,
 	
-		fling = flingTarget,
 		kick = kickTarget,
 		bang = kickTarget,
 	
@@ -3618,7 +3607,7 @@ run(function()
 		end},
 		{Name = 'Rejoin', Tooltip = '.rj\n.rejoin'},
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
-		{Name = 'Fling', Tooltip = '.fling <plr/all> flings the target with a vehicle seat (KickMode Regular)\n.kick / ;bang <plr/all> seats them in the driver seat and gets them kicked (KickMode ForceKick)'},
+		{Name = 'Fling', Tooltip = '.kick / ;bang <plr/all> flings the target with a vehicle seat'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
