@@ -107,12 +107,16 @@ end
 local function getfontbounds(text, size, font)
 	fontsize.Text = text
 	fontsize.Size = size
-	if typeof(font) == 'Font' then
-		fontsize.Font = font
-	end
+	fontsize.Font = typeof(font) == 'Font' and font or uipallet.Font
 
-	return textService:GetTextBoundsAsync(fontsize)
+	local success, bounds = pcall(function()
+		return textService:GetTextBoundsAsync(fontsize)
+	end)
+
+	fontsize.Font = uipallet.Font
+	return success and bounds or Vector2.zero
 end
+
 
 do
 	local vapeAssets = {
@@ -281,11 +285,21 @@ do
 	if data then
 		uipallet.Main = data.Main and Color3.fromRGB(unpack(data.Main)) or uipallet.Main
 		uipallet.Text = data.Text and Color3.fromRGB(unpack(data.Text)) or uipallet.Text
-		uipallet.Font = data.Font and Font.new(
-			data.Font:find('rbxasset') and data.Font
-			or string.format('rbxasset://fonts/families/%s.json', data.Font)
-		) or uipallet.Font
-		uipallet.FontSemiBold = Font.new(uipallet.Font.Family, Enum.FontWeight.SemiBold)
+		if data.Font then
+			local success, font = pcall(Font.new,
+				data.Font:find('rbxasset') and data.Font
+				or string.format('rbxasset://fonts/families/%s.json', data.Font)
+			)
+
+			if success then
+				uipallet.Font = font
+			end
+		end
+
+		local success, font = pcall(Font.new, uipallet.Font.Family, Enum.FontWeight.SemiBold)
+		if success then
+			uipallet.FontSemiBold = font
+		end
 	end
 
 	fontsize.Font = uipallet.Font
