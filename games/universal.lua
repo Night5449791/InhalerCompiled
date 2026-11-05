@@ -7623,6 +7623,8 @@ run(function()
 	Anchor.Transparency = 1
 	Anchor.Size = Vector3.new(1, 1, 1)
 	Anchor.Parent = Folder
+	-- nothing is drawn unless the anchor sits in the world
+	local anchorParented = false
 	local oldphys, oldsend
 	local boxes = {}
 	local whitelist = {
@@ -7649,18 +7651,26 @@ run(function()
 	}
 	
 	-- the boxes belong to `Spawn fake` alone: they mark where the server last saw
-	-- us, so they have to appear before Blink chokes anything and stay up after it
-	-- is turned off, while the choke itself only runs with Blink on
+	-- us, so they swallow everything the server misses and disappear with the toggle
 	local function clearBoxes()
-		Anchor.Parent = Folder
+		if anchorParented and Anchor.Parent then
+			Anchor.Parent = nil
+			anchorParented = false
+		end
+	
 		Folder:ClearAllChildren()
-		boxes = {}
+		table.clear(boxes)
 	end
 	
 	local function updateBoxes()
-		if not (Fake.Enabled and entitylib.isAlive) then
+		if not (Fake.Enabled and Blink.Enabled and entitylib.isAlive) then
 			clearBoxes()
 			return
+		end
+	
+		if not anchorParented then
+			Anchor.Parent = Folder
+			anchorParented = true
 		end
 	
 		local character = entitylib.character.Character
@@ -7724,6 +7734,7 @@ run(function()
 				end
 	
 				oldphys, oldsend = nil, nil
+				clearBoxes()
 			end
 		end,
 		Tooltip = 'Chokes packets until disabled.'
@@ -7736,16 +7747,19 @@ run(function()
 	Fake = Blink:CreateToggle({
 		Name = 'Spawn fake',
 		Function = function(callback)
-			updateBoxes()
-	
 			-- a respawn swaps entitylib.character, so the boxes have to be rebuilt
 			-- against the new rig. The connection is kept here rather than in the
 			-- module's maid so it can be dropped the moment this toggle goes off.
 			if callback then
+				updateBoxes()
 				Fake.Connection = entitylib.Events.LocalAdded:Connect(updateBoxes)
-			elseif Fake.Connection then
-				Fake.Connection:Disconnect()
-				Fake.Connection = nil
+			else
+				if Fake.Connection then
+					Fake.Connection:Disconnect()
+					Fake.Connection = nil
+				end
+	
+				updateBoxes()
 			end
 		end,
 		Tooltip = 'Spawns chams from where you started/are on the servers side.'
