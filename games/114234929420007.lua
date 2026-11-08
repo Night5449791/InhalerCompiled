@@ -743,7 +743,7 @@ run(function()
 
 	-- the look-for-a-target pass is the expensive half (an entity sweep and a raycast), so
 	-- it runs on its own clock while the trigger itself is pulled every frame
-	local GATE_SECONDS = 0.15
+	local gateSeconds = 0.15
 
 	local function autoFireLoop()
 		local gateUntil, gateOk = 0, false
@@ -757,7 +757,7 @@ run(function()
 				local now = os.clock()
 				if now >= gateUntil then
 					gateOk = reachable()
-					gateUntil = now + GATE_SECONDS
+					gateUntil = now + gateSeconds
 				end
 
 				local active = gateOk and currentWeapon()
@@ -904,17 +904,17 @@ run(function()
 	-- the game ships its lighting per map as a whole property table, so the fog is not set once and
 	-- forgotten: every value is written back whenever something else moves it (Lighting.FogStart and
 	-- FogEnd, or the Atmosphere under Lighting), and an Atmosphere added later is caught on ChildAdded
-	local FOG_PROPERTIES = {
+	local fogProperties = {
 		FogStart = 100000,
 		FogEnd = 100000
 	}
 	
-	local ATMOSPHERE_PROPERTIES = {
+	local atmosphereProperties = {
 		Density = 0,
 		Haze = 0
 	}
 	
-	local CONNECTIONS = {}
+	local connections = {}
 	local saved = setmetatable({}, {__mode = 'k'})
 	local locked = setmetatable({}, {__mode = 'k'})
 	local smokeSaved = setmetatable({}, {__mode = 'k'})
@@ -936,9 +936,7 @@ run(function()
 			locked[instance] = active
 		end
 	
-		if active[prop] then
-			return
-		end
+		if active[prop] then return end
 	
 		active[prop] = true
 	
@@ -946,7 +944,7 @@ run(function()
 			instance[prop] = value
 		end
 	
-		table.insert(CONNECTIONS, instance:GetPropertyChangedSignal(prop):Connect(function()
+		table.insert(connections, instance:GetPropertyChangedSignal(prop):Connect(function()
 			if instance[prop] ~= value then
 				instance[prop] = value
 			end
@@ -954,13 +952,13 @@ run(function()
 	end
 	
 	local function lockAtmosphere(atmosphere)
-		for prop, value in ATMOSPHERE_PROPERTIES do
+		for prop, value in atmosphereProperties do
 			lock(atmosphere, prop, value)
 		end
 	end
 	
 	local function startFog()
-		for prop, value in FOG_PROPERTIES do
+		for prop, value in fogProperties do
 			lock(lightingService, prop, value)
 		end
 	
@@ -970,7 +968,7 @@ run(function()
 			end
 		end
 	
-		table.insert(CONNECTIONS, lightingService.ChildAdded:Connect(function(instance)
+		table.insert(connections, lightingService.ChildAdded:Connect(function(instance)
 			if instance:IsA('Atmosphere') then
 				lockAtmosphere(instance)
 			end
@@ -983,14 +981,10 @@ run(function()
 		-- named first: Debris churns with pooled ragdolls, so this runs for far more parts than the
 		-- clouds it is after and the name is the cheapest thing to reject on. A plain find keeps the
 		-- prefix test allocation free, where sub would build a string per part it rejects.
-		if instance.Name ~= 'SmokeVoxel' or smokeSaved[instance] or not instance:IsA('BasePart') then
-			return
-		end
+		if instance.Name ~= 'SmokeVoxel' or smokeSaved[instance] or not instance:IsA('BasePart') then return end
 	
 		local parent = instance.Parent
-		if not parent or parent.Name:find('VoxelSmoke_', 1, true) ~= 1 then
-			return
-		end
+		if not parent or parent.Name:find('VoxelSmoke_', 1, true) ~= 1 then return end
 	
 		smokeSaved[instance] = {
 			CanCollide = instance.CanCollide,
@@ -1010,7 +1004,7 @@ run(function()
 			hideSmoke(instance)
 		end
 	
-		table.insert(CONNECTIONS, debris.DescendantAdded:Connect(hideSmoke))
+		table.insert(connections, debris.DescendantAdded:Connect(hideSmoke))
 	end
 	
 	local function startSmoke()
@@ -1020,7 +1014,7 @@ run(function()
 		end
 	
 		-- the folder goes away and comes back with the map, so a fresh one has to be picked up again
-		table.insert(CONNECTIONS, workspace.ChildAdded:Connect(function(instance)
+		table.insert(connections, workspace.ChildAdded:Connect(function(instance)
 			if instance.Name == 'Debris' then
 				watchDebris(instance)
 			end
@@ -1028,11 +1022,11 @@ run(function()
 	end
 	
 	local function stop()
-		for _, connection in CONNECTIONS do
+		for _, connection in connections do
 			connection:Disconnect()
 		end
 	
-		table.clear(CONNECTIONS)
+		table.clear(connections)
 		table.clear(locked)
 	
 		for instance, props in saved do

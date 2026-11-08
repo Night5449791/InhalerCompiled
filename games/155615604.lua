@@ -102,9 +102,7 @@ local function removeTags(str)
 end
 
 local function safeHook(target, replacement)
-	if typeof(target) ~= 'function' then
-		return
-	end
+	if typeof(target) ~= 'function' then return end
 
 	if restorefunction then
 		pcall(restorefunction, target)
@@ -114,9 +112,7 @@ local function safeHook(target, replacement)
 end
 
 local function safeUnhook(target, original)
-	if typeof(target) ~= 'function' then
-		return
-	end
+	if typeof(target) ~= 'function' then return end
 
 	if restorefunction then
 		pcall(restorefunction, target)
@@ -2355,9 +2351,7 @@ run(function()
 	
 	local function Removed(c4)
 		local cham = Reference[c4]
-		if not cham then
-			return
-		end
+		if not cham then return end
 	
 		if vape.ThreadFix then
 			setthreadidentity(8)
@@ -2368,9 +2362,7 @@ run(function()
 	end
 	
 	local function Added(c4)
-		if Reference[c4] then
-			return
-		end
+		if Reference[c4] then return end
 	
 		local cham = Instance.new('Highlight')
 		cham.Adornee = c4
@@ -2412,9 +2404,7 @@ run(function()
 		Name = 'Color',
 		Function = function(hue, sat, val)
 			local color = Color3.fromHSV(hue, sat, val)
-			if color == lastFill then
-				return
-			end
+			if color == lastFill then return end
 	
 			lastFill = color
 	
@@ -2428,9 +2418,7 @@ run(function()
 		DefaultSat = 0,
 		Function = function(hue, sat, val)
 			local color = Color3.fromHSV(hue, sat, val)
-			if color == lastOutline then
-				return
-			end
+			if color == lastOutline then return end
 	
 			lastOutline = color
 	
@@ -2470,11 +2458,11 @@ run(function()
 	local KillNotifications
 	local height
 	
-	local MAX_STACK = 4
-	local LIFETIME = 2.5
-	local FADE = 0.3
-	local FADE_INFO = TweenInfo.new(FADE)
-	local ENTRY_W, ENTRY_H, ENTRY_STEP = 460, 22, 25
+	local maxStack = 4
+	local lifetimeValue = 2.5
+	local fadeTime = 0.3
+	local fadeInfo = TweenInfo.new(fadeTime)
+	local entryW, entryH, entryStep = 460, 22, 25
 	local offset
 	local positions = {}
 	
@@ -2529,8 +2517,8 @@ run(function()
 		Function = function(callback)
 			if callback then
 				stack = {}
-				for i = 1, MAX_STACK do
-					positions[i] = UDim2.new(0.5, 0, 1, -offset - (i - 1) * ENTRY_STEP)
+				for i = 1, maxStack do
+					positions[i] = UDim2.new(0.5, 0, 1, -offset - (i - 1) * entryStep)
 				end
 	
 				feed = Instance.new('ScreenGui')
@@ -2552,7 +2540,7 @@ run(function()
 				prototype.TextStrokeColor3 = Color3.new()
 				prototype.TextStrokeTransparency = 0.7
 				prototype.TextXAlignment = Enum.TextXAlignment.Center
-				prototype.Size = UDim2.new(0, ENTRY_W, 0, ENTRY_H)
+				prototype.Size = UDim2.new(0, entryW, 0, entryH)
 	
 				local myName = lplr.Name
 				local myDisp = lplr.DisplayName
@@ -2633,13 +2621,13 @@ run(function()
 					entry.TextTransparency = 1
 					entry.TextStrokeTransparency = 1
 					entry.Parent = feed
-					tweenService:Create(entry, FADE_INFO, {
+					tweenService:Create(entry, fadeInfo, {
 						TextTransparency = 0,
 						TextStrokeTransparency = 0.7
 					}):Play()
 	
 					table.insert(stack, 1, entry)
-					if #stack > MAX_STACK then
+					if #stack > maxStack then
 						stack[#stack]:Destroy()
 						table.remove(stack)
 					end
@@ -2647,15 +2635,15 @@ run(function()
 						stack[i].Position = positions[i]
 					end
 	
-					task.delay(LIFETIME - FADE, function()
+					task.delay(lifetimeValue - fadeTime, function()
 						local idx = table.find(stack, entry)
 						if not idx then return end
 	
-						tweenService:Create(entry, FADE_INFO, {
+						tweenService:Create(entry, fadeInfo, {
 							TextTransparency = 1,
 							TextStrokeTransparency = 1
 						}):Play()
-						task.wait(FADE)
+						task.wait(fadeTime)
 	
 						idx = table.find(stack, entry)
 						if not idx then return end
@@ -2688,8 +2676,8 @@ run(function()
 		Tooltip = 'killfeed gui y axis',
 		Function = function(value)
 			offset = value
-			for i = 1, MAX_STACK do
-				positions[i] = UDim2.new(0.5, 0, 1, -value - (i - 1) * ENTRY_STEP)
+			for i = 1, maxStack do
+				positions[i] = UDim2.new(0.5, 0, 1, -value - (i - 1) * entryStep)
 			end
 		end
 	})
@@ -2736,9 +2724,7 @@ run(function()
 	
 	local function EntityAdded()
 		local backpack = lplr:FindFirstChildWhichIsA('Backpack')
-		if not backpack then
-			return
-		end
+		if not backpack then return end
 	
 		ToolGrip:Clean(backpack.ChildAdded:Connect(ApplyGrip))
 		for _, tool in backpack:GetChildren() do
@@ -3054,6 +3040,7 @@ end)
 run(function()
 	local AutoToxic
 	local KXUser
+	local KXSkip
 	local Presets = {}
 	local cloned = {}
 	local random = Random.new()
@@ -3084,9 +3071,7 @@ run(function()
 		-- instead of a lookup per id
 		if #KXSkip.ListEnabled > 0 then
 			for _, player in playersService:GetPlayers() do
-				if table.find(KXSkip.ListEnabled, tostring(player.UserId)) then
-					return
-				end
+				if table.find(KXSkip.ListEnabled, tostring(player.UserId)) then return end
 			end
 		end
 	
@@ -3101,9 +3086,7 @@ run(function()
 	
 	local function sendMessage(obj)
 		local name = (obj or ''):match('^%s*(.-)%s*$')
-		if name == '' or name == lplr.DisplayName or name == lplr.Name then
-			return
-		end
+		if name == '' or name == lplr.DisplayName or name == lplr.Name then return end
 	
 		if not next(cloned) then
 			cloned = table.clone(lines)
@@ -3174,7 +3157,7 @@ run(function()
 	-- a friend may drive these commands while ShareCommands is on, a private member always may
 	
 	local ChatCommand
-	local TARGET_COLOR = Color3.new(1, 0, 0)
+	local targetColor = Color3.new(1, 0, 0)
 	
 	local options = {}
 	local sharedConnections = {}
@@ -3182,10 +3165,10 @@ run(function()
 	local viewPlayer
 	local followModule, followOldMove, followPlayer, followConnection
 	
-	local TP_OFFSET = Vector3.new(0, 2, 0)
+	local tpOffset = Vector3.new(0, 2, 0)
 	
-	local DISCORD_CODE = 'YSzD7f9neR'
-	local DISCORD_INVITE = 'https://discord.gg/'..DISCORD_CODE
+	local discordCode = 'YSzD7f9neR'
+	local discordInvite = 'https://discord.gg/'..discordCode
 	
 	-- ============================================================================
 	-- helpers
@@ -3378,7 +3361,7 @@ run(function()
 			return
 		end
 	
-		localRoot.CFrame = target.RootPart.CFrame + TP_OFFSET
+		localRoot.CFrame = target.RootPart.CFrame + tpOffset
 	end
 	
 	local function handleFollow(args)
@@ -3458,7 +3441,7 @@ run(function()
 	
 		local name = player.Name
 		setListValue(list, name, not remove)
-		whitelist.customtags[name] = not remove and {{text = 'Exploiter', color = TARGET_COLOR}} or nil
+		whitelist.customtags[name] = not remove and {{text = 'Exploiter', color = targetColor}} or nil
 		tempTargets[name] = not remove or nil
 		notif('Blacklist', player.DisplayName..' has been '..(remove and 'unblacklisted.' or 'blacklisted.'), 5)
 	end
@@ -3612,8 +3595,8 @@ run(function()
 			return
 		end
 	
-		setclipboard(DISCORD_INVITE)
-		openDiscordInvite(DISCORD_CODE)
+		setclipboard(discordInvite)
+		openDiscordInvite(discordCode)
 		notif('ChatCommand', 'Copied the discord invite.', 5)
 	end
 	
@@ -3961,16 +3944,16 @@ run(function()
 	local whitelist = vape.Libraries.whitelist
 	local jsonEncode, jsonDecode = httpService.JSONEncode, httpService.JSONDecode
 	local osDate, osTime = os.date, os.time
-	local DB_VERSION = 3
+	local dbVersion = 3
 	local cheaterOptions = {}
 	local filePath = 'newvape/cheaters.json'
 	local backupPath = 'newvape/cheaters.json.bak'
 	local brokenPath = 'newvape/cheaters.json.broken'
-	local Cheaters = {Version = DB_VERSION, Names = {}, Users = {}, Count = 0}
-	local TAG_COLOR = Color3.new(1, 0, 0)
-	local EMBED_RED = 15548997
-	local EMBED_GREEN = 5763911
-	local WEBHOOK_NAME = 'Inhaler CheaterDetector'
+	local Cheaters = {Version = dbVersion, Names = {}, Users = {}, Count = 0}
+	local tagColor = Color3.new(1, 0, 0)
+	local embedRed = 15548997
+	local embedGreen = 5763911
+	local webhookName = 'Inhaler CheaterDetector'
 	
 	local function countCheaters(names, users)
 		local count = 0
@@ -4045,12 +4028,12 @@ run(function()
 		local version = type(data.Version) == 'number' and data.Version or 1
 		local upgraded = false
 	
-		if version > DB_VERSION then
+		if version > dbVersion then
 			Cheaters.Version = version
-			notify('Cheater database is newer (v'..version..') than this script (v'..DB_VERSION..'), using it as is.', 15, 'warning')
+			notify('Cheater database is newer (v'..version..') than this script (v'..dbVersion..'), using it as is.', 15, 'warning')
 		else
-			if version < DB_VERSION then
-				data.Version = DB_VERSION
+			if version < dbVersion then
+				data.Version = dbVersion
 				upgraded = true
 			end
 	
@@ -4063,7 +4046,7 @@ run(function()
 	
 		if upgraded then
 			saveCheaters()
-			notify('Upgraded cheater database to v'..DB_VERSION..'.', 10)
+			notify('Upgraded cheater database to v'..dbVersion..'.', 10)
 		elseif restored then
 			saveCheaters() -- write the recovered data back over the broken file
 		elseif content and not isfile(backupPath) then
@@ -4072,7 +4055,7 @@ run(function()
 	end
 	
 	local function tagCheater(plr, reason, alert)
-		whitelist.customtags[plr.Name] = reason and {{text = 'Exploiter', color = TAG_COLOR}} or nil
+		whitelist.customtags[plr.Name] = reason and {{text = 'Exploiter', color = tagColor}} or nil
 		tempTargets[plr.Name] = reason and true or nil
 	
 		if reason and alert and cheaterOptions.Notifications.Enabled then
@@ -4187,9 +4170,9 @@ run(function()
 			local sent, err = webhook.sendEmbed(url, {
 				title = removed and '✅ Cheater Removed / Unflagged' or '🚨 Detected Cheater',
 				description = 'User: '..label..' (@'..handle..')\nID: '..id,
-				color = removed and EMBED_GREEN or EMBED_RED,
+				color = removed and embedGreen or embedRed,
 				fields = fields
-			}, WEBHOOK_NAME)
+			}, webhookName)
 	
 			if not sent then
 				notify('Webhook failed: '..tostring(err), 10, 'warning')
@@ -4326,9 +4309,7 @@ run(function()
 		if plr == lplr then return end
 	
 		for _, other in playersService:GetPlayers() do
-			if other ~= plr and (other.Name == plr.Name or other.DisplayName == plr.DisplayName) then
-				return
-			end
+			if other ~= plr and (other.Name == plr.Name or other.DisplayName == plr.DisplayName) then return end
 		end
 	
 		if not whitelist.customtags[plr.Name] and not tempTargets[plr.Name] then return end
@@ -4574,9 +4555,9 @@ run(function()
 		__mode = 'k'
 	})
 	local CYAN = BrickColor.new('Cyan')
-	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
-	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
-	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
+	local driveVelocity = Vector3.new(24, 0, 0)
+	local normalVelocity = Vector3.new(10000, 10000, 0)
+	local normalOffset = CFrame.new(-2, 0, -12)
 	
 	local seatsDirty = false
 	
@@ -4649,9 +4630,7 @@ run(function()
 			tempList[seat] = nil
 		end
 	
-		if not entitylib.isAlive then
-			return
-		end
+		if not entitylib.isAlive then return end
 	
 		if candidateTime ~= now then
 			candidateTime = now
@@ -4677,9 +4656,7 @@ run(function()
 		end
 	
 		local target = candidateList[1]
-		if not target then
-			return
-		end
+		if not target then return end
 	
 		table.remove(candidateList, 1)
 		lastFling[target.Player.Name] = now
@@ -4798,9 +4775,7 @@ run(function()
 						return
 					end
 	
-					if not entitylib.isAlive then
-						return
-					end
+					if not entitylib.isAlive then return end
 	
 					if Mode.Value == 'Individual' and not next(List.List) then
 						notif('FlingExploit', 'No targets left, disabling.', 5)
@@ -4834,7 +4809,7 @@ run(function()
 	
 					if Movement.Enabled then
 						root.CFrame = CFrame.new(610 + dir, 98, 2494)
-						root.AssemblyLinearVelocity = DRIVE_VELOCITY
+						root.AssemblyLinearVelocity = driveVelocity
 					end
 	
 					local owned, flung, flungHumanoid
@@ -4856,8 +4831,8 @@ run(function()
 						flung = true
 						flungHumanoid = target.Humanoid
 	
-						seat.AssemblyLinearVelocity = NORMAL_VELOCITY
-						seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
+						seat.AssemblyLinearVelocity = normalVelocity
+						seat.CFrame = CFrame.new(target.RootPart.Position) * normalOffset
 						target.RootPart.AssemblyLinearVelocity = Vector3.zero
 	
 						local sethidden = executorShim('sethiddenproperty')
@@ -5145,7 +5120,7 @@ run(function()
 	local items = {}
 	local PickupList = {}
 	local died = false
-	local PICKUP_GUN_CFRAME = CFrame.new(816, 98, 2225)
+	local pickupGunCF = CFrame.new(816, 98, 2225)
 	
 	local function AddPickup(pickup)
 		if pickup:IsA('Model') and pickup.Name ~= 'Model' and pickup:GetAttribute('ToolName') then
@@ -5186,7 +5161,7 @@ run(function()
 		local deadline = os.clock() + 2
 	
 		repeat
-			root.CFrame = PICKUP_GUN_CFRAME
+			root.CFrame = pickupGunCF
 			root.AssemblyLinearVelocity = Vector3.zero
 			task.wait(0.05)
 	
@@ -5623,9 +5598,7 @@ run(function()
 			if callback then
 				TracerHook:Add('DamageIndicator', function()
 					local part = debug.getstack(4, 13)
-					if typeof(part) ~= 'Instance' then
-						return
-					end
+					if typeof(part) ~= 'Instance' then return end
 	
 					local clock = os.clock()
 	
@@ -5643,9 +5616,7 @@ run(function()
 				end)
 	
 				DamageIndicator:Clean(entitylib.Events.EntityUpdated:Connect(function(entity)
-					if entity ~= tentity or ttimer <= os.clock() then
-						return
-					end
+					if entity ~= tentity or ttimer <= os.clock() then return end
 	
 					if entity ~= lentity then
 						if indi then

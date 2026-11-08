@@ -29,7 +29,7 @@ local useTeamColor = vape.Settings.Modules.Options['Use team color']
 local ftap = {
 	remotes = nil,
 	toys = {},
-	grabbed = {}
+	grabbed = {},
 }
 
 local function isFriend(plr, recolor)
@@ -92,7 +92,7 @@ run(function()
 			createGrabLine = grabEvents:FindFirstChild('CreateGrabLine'),
 			extendGrabLine = grabEvents:FindFirstChild('ExtendGrabLine'),
 			ragdoll = characterEvents and characterEvents:FindFirstChild('RagdollRemote'),
-			struggle = characterEvents and characterEvents:FindFirstChild('Struggle')
+			struggle = characterEvents and characterEvents:FindFirstChild('Struggle'),
 		}
 	end
 
@@ -392,7 +392,7 @@ run(function()
 	-- The loop has to keep running: the game re-claims ownership on its own rhythm, and one
 	-- write is undone before it replicates. 0.1s is the source's cadence and it is what the
 	-- server tolerates without dropping the grab.
-	local SPIN_CFRAME = CFrame.new(150, 307, 332)
+	local spinCFrame = CFrame.new(150, 307, 332)
 	
 	local function primaryOf(obj)
 		if not obj then return nil end

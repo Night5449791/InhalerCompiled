@@ -2227,8 +2227,8 @@ run(function()
 	local generation = 0
 	-- how long after `CharacterAdded` the server keeps overwriting the root. The respawn
 	-- lands on the spawn location ~1s in, so a write before that is simply replaced
-	local SETTLE_TIMEOUT = 2.5
-	local SETTLE_STEP = 0.05
+	local settleTimeout = 2.5
+	local settleStep = 0.05
 	
 	local function getRoot(char)
 		if not char then return end
@@ -2280,7 +2280,7 @@ run(function()
 	-- `CharacterAdded` fires before the server has placed the body, so a single write is
 	-- thrown away: in a measured respawn the root sat at the spawn location until ~1s and
 	-- every write before that was overwritten. The position is re-asserted for
-	-- `SETTLE_TIMEOUT` instead, and the loop stops as soon as it sticks. The velocity is
+	-- `settleTimeout` instead, and the loop stops as soon as it sticks. The velocity is
 	-- cleared with it or the body keeps falling from wherever it was spawned.
 	local function returnToLastDeath(char, currentGeneration)
 		if not enabled or currentGeneration ~= generation or not char then return end
@@ -2290,13 +2290,11 @@ run(function()
 		local target = lastDeath
 		if not root or not humanoid or not target then return end
 	
-		local deadline = os.clock() + SETTLE_TIMEOUT
+		local deadline = os.clock() + settleTimeout
 		local settled = 0
 	
 		repeat
-			if not enabled or currentGeneration ~= generation or lplr.Character ~= char or not root.Parent then
-				return
-			end
+			if not enabled or currentGeneration ~= generation or lplr.Character ~= char or not root.Parent then return end
 	
 			if not lastDeath then return end
 	
@@ -2312,7 +2310,7 @@ run(function()
 				settled = settled + 1
 			end
 	
-			task.wait(SETTLE_STEP)
+			task.wait(settleStep)
 		until settled >= 3 or os.clock() > deadline
 	
 		if enabled and currentGeneration == generation and lplr.Character == char and settled >= 3 then
@@ -6654,6 +6652,7 @@ run(function()
 	duration.TextSize = 13
 	duration.TextXAlignment = Enum.TextXAlignment.Left
 	duration.Parent = holder
+	
 	Spotify:CreateFont({
 		Name = 'Font',
 		Default = 'Arial',
@@ -6663,6 +6662,7 @@ run(function()
 			duration.FontFace = value
 		end
 	})
+	
 	stroke = Instance.new('UIStroke')
 	stroke.Enabled = false
 	stroke.Color = Color3.fromHSV(0.44, 1, 1)
@@ -7934,11 +7934,11 @@ run(function()
 	local danceTrack
 	
 	-- built once instead of per call: the follow steering runs on every frame
-	local FLAT_MASK = Vector3.new(1, 0, 1)
+	local flatMask = Vector3.new(1, 0, 1)
 	-- where .tp lands the local character
-	local TP_OFFSET = Vector3.new(0, 2, 0)
+	local tpOffset = Vector3.new(0, 2, 0)
 	-- animation ids per rig, so .dance stops rebuilding two lists every time
-	local DANCE_IDS = {
+	local danceIds = {
 		R6 = {'27789359', '30196114', '248263260', '45834924', '33796059', '28488254', '52155728'},
 		R15 = {'3333432454', '4555808220', '4049037604', '4555782893', '10214311282', '10714010337', '10713981723', '10714372526', '10714076981', '10714392151', '11444443576'}
 	}
@@ -8075,7 +8075,7 @@ run(function()
 			local targetRoot = target and target.RootPart
 			local root = entitylib.character and entitylib.character.RootPart
 			if targetRoot and root then
-				local direction = (targetRoot.Position - root.Position) * FLAT_MASK
+				local direction = (targetRoot.Position - root.Position) * flatMask
 				if direction.Magnitude > 1 then
 					vec = direction.Unit
 				end
@@ -8133,7 +8133,7 @@ run(function()
 			return
 		end
 	
-		localRoot.CFrame = target.RootPart.CFrame + TP_OFFSET
+		localRoot.CFrame = target.RootPart.CFrame + tpOffset
 	end
 	
 	local function handleFollow(args)
@@ -8260,7 +8260,7 @@ run(function()
 	
 		stopDance()
 	
-		local dances = humanoid.RigType == Enum.HumanoidRigType.R15 and DANCE_IDS.R15 or DANCE_IDS.R6
+		local dances = humanoid.RigType == Enum.HumanoidRigType.R15 and danceIds.R15 or danceIds.R6
 		local animation = Instance.new('Animation')
 		animation.AnimationId = 'rbxassetid://'..dances[math.random(1, #dances)]
 		danceTrack = humanoid:LoadAnimation(animation)
@@ -8664,10 +8664,10 @@ run(function()
 		voiceChatService = cloneref(game:GetService('VoiceChatService'))
 		voiceChatInternal = cloneref(game:GetService('VoiceChatInternal'))
 	end)
-	local MUTED_ICON = 'rbxasset://textures/ui/VoiceChat/MicLight/Muted.png'
-	local UNMUTED_ICON = 'rbxasset://textures/ui/VoiceChat/MicLight/Talking0.png'
-	local MIC_OFFSET_X, MIC_OFFSET_Y, MIC_SIZE = 14, 13, 35
-	local DISABLE_START = 7
+	local mutedIcon = 'rbxasset://textures/ui/VoiceChat/MicLight/Muted.png'
+	local unmutedIcon = 'rbxasset://textures/ui/VoiceChat/MicLight/Talking0.png'
+	local micOffsetX, micOffsetY, micSize = 14, 13, 35
+	local disableStart = 7
 	local state = {
 		muted = false,
 		busy = false,
@@ -8714,7 +8714,7 @@ run(function()
 	
 	local function syncIcon()
 		if micIcon then
-			micIcon.Image = (state.muted and MUTED_ICON or UNMUTED_ICON)
+			micIcon.Image = (state.muted and mutedIcon or unmutedIcon)
 		end
 	
 		if redVoiceDot and redVoiceDot.Parent then
@@ -8793,7 +8793,7 @@ run(function()
 		notif('AntiVoiceChatBan', 'Unmute to continue.', 5)
 		while vape.Loaded do
 			local image = micImage()
-			if image and image ~= '' and image ~= MUTED_ICON then
+			if image and image ~= '' and image ~= mutedIcon then
 				return true
 			end
 	
@@ -8827,7 +8827,7 @@ run(function()
 		if not getConnections or not voiceChatInternal then return end
 	
 		local connections = getConnections(voiceChatInternal.StateChanged)
-		for index = DISABLE_START, #connections do
+		for index = disableStart, #connections do
 			local connection = connections[index]
 			if connection then
 				pcall(function()
@@ -8859,8 +8859,8 @@ run(function()
 		micButton = Instance.new('TextButton')
 		micButton.Name = 'MicHitArea'
 		micButton.BackgroundTransparency = 1
-		micButton.Position = UDim2.new(0, 150 + MIC_OFFSET_X, 0, 4 + MIC_OFFSET_Y)
-		micButton.Size = UDim2.new(0, MIC_SIZE, 0, MIC_SIZE)
+		micButton.Position = UDim2.new(0, 150 + micOffsetX, 0, 4 + micOffsetY)
+		micButton.Size = UDim2.new(0, micSize, 0, micSize)
 		micButton.Text = ''
 		micButton.Active = true
 		micButton.ZIndex = 10000
@@ -8869,7 +8869,7 @@ run(function()
 		micIcon = Instance.new('ImageLabel')
 		micIcon.Name = 'MicIcon'
 		micIcon.BackgroundTransparency = 1
-		micIcon.Image = MUTED_ICON
+		micIcon.Image = mutedIcon
 		micIcon.ScaleType = Enum.ScaleType.Fit
 		micIcon.Size = UDim2.new(1, 0, 1, 0)
 		micIcon.ZIndex = 10001
@@ -8905,8 +8905,8 @@ run(function()
 		end
 	
 		if iconPosition and iconPosition.X > 0 and iconPosition.Y >= 0 then
-			micButton.Position = UDim2.new(0, iconPosition.X + MIC_OFFSET_X, 0, iconPosition.Y + MIC_OFFSET_Y)
-			micButton.Size = UDim2.new(0, MIC_SIZE, 0, MIC_SIZE)
+			micButton.Position = UDim2.new(0, iconPosition.X + micOffsetX, 0, iconPosition.Y + micOffsetY)
+			micButton.Size = UDim2.new(0, micSize, 0, micSize)
 		end
 	
 		setMuted(true)
@@ -9668,6 +9668,7 @@ run(function()
 	ShowSeconds = Clock:CreateToggle({
 		Name = 'Show seconds'
 	})
+	
 	label = Instance.new('TextLabel')
 	label.Size = UDim2.new(0, 100, 0, 41)
 	label.BackgroundTransparency = 0.6
@@ -9693,8 +9694,8 @@ run(function()
 	local CoreGui = game:GetService('CoreGui')
 	
 	local IDLE, DONE = '[C]', '[√]'
-	local RESET_AFTER = 2.5
-	local MAX_REMEMBERED = 150
+	local resetAfter = 2.5
+	local maxRemembered = 150
 	
 	-- what LogService has printed, so a row can be recognised even when the console's
 	-- own container is not where we expect it
@@ -9716,7 +9717,7 @@ run(function()
 		remembered[message] = true
 		table.insert(rememberedOrder, message)
 	
-		if #rememberedOrder > MAX_REMEMBERED then
+		if #rememberedOrder > maxRemembered then
 			remembered[table.remove(rememberedOrder, 1)] = nil
 		end
 	end
@@ -9745,9 +9746,7 @@ run(function()
 		if row.Name == 'ConsoleCopyMark' or marks[row] then return end
 	
 		-- the timestamp / icon cells next to a log line are not the message; leave them be
-		if row.Name == 'Timestamp' or row.Name == 'TimestampLabel' or row.Name == 'icon' or row.Name == 'Icon' then
-			return
-		end
+		if row.Name == 'Timestamp' or row.Name == 'TimestampLabel' or row.Name == 'icon' or row.Name == 'Icon' then return end
 	
 		local text = row.Text
 		if text == '' then return end
@@ -9774,7 +9773,7 @@ run(function()
 			row.Text = text .. '  ' .. DONE
 			row.TextColor3 = Color3.fromRGB(120, 255, 130)
 	
-			task.delay(RESET_AFTER, function()
+			task.delay(resetAfter, function()
 				if not row.Parent then return end
 	
 				row.Text = text .. '  ' .. IDLE
@@ -9805,9 +9804,7 @@ run(function()
 		-- rows are recycled while the console scrolls, so the line under the mark changes
 		-- and we re-append the marker to whatever the console just put there
 		table.insert(connections, row:GetPropertyChangedSignal('Text'):Connect(function()
-			if row.Text:sub(-5) == '  ' .. IDLE or row.Text:sub(-5) == '  ' .. DONE then
-				return
-			end
+			if row.Text:sub(-5) == '  ' .. IDLE or row.Text:sub(-5) == '  ' .. DONE then return end
 	
 			text = row.Text
 			originals[row] = text
