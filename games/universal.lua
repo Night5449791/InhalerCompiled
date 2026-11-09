@@ -7915,7 +7915,8 @@ run(function()
 end)
 
 run(function()
-	-- a friend may drive these commands while ShareCommands is on, a private member always may
+	-- a friend may drive these commands while ShareCommands is on, a private member is skipped
+	-- because their own client already ran it
 	
 	local ChatCommand
 	
@@ -8294,8 +8295,8 @@ run(function()
 	
 	local toggles = {
 		-- off by default: a friend may only drive these commands after it is turned on, a
-		-- private member always may (see canShare)
-		{Name = 'ShareCommands', Default = false, Tooltip = 'Allows whitelisted users to directly access chat commands.\nPrivate members always have access.'},
+		-- private member is skipped by canShare
+		{Name = 'ShareCommands', Default = false, Tooltip = 'Allows whitelisted users to directly access chat commands.'},
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
 		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
 			if not enabled then stopFollow() end
@@ -8316,14 +8317,14 @@ run(function()
 	-- ============================================================================
 	
 	local function canShare(plr)
-		if options.ShareCommands.Enabled and table.find(vape.Categories.Friends.ListEnabled, plr.Name) then
-			return true
+		-- a private member is not shared with: their line would run the command twice, once
+		-- for their own client and again here
+		local success, level = pcall(whitelist.get, whitelist, plr)
+		if success and type(level) == 'number' and level > 0 then
+			return false
 		end
 	
-		-- private members get through whether the toggle is on or not: only they have a level
-		-- above zero, so a missing or failed lookup is a no instead of an accidental yes
-		local success, level = pcall(whitelist.get, whitelist, plr)
-		return success and type(level) == 'number' and level > 0
+		return options.ShareCommands.Enabled and table.find(vape.Categories.Friends.ListEnabled, plr.Name) ~= nil
 	end
 	
 	-- declared first: trackPlayer closes over it and the definition comes after
@@ -8434,7 +8435,7 @@ run(function()
 			Name = toggle.Name,
 			Tooltip = toggle.Tooltip,
 			-- ShareCommands is the one that ships off: a friend can drive commands only after
-			-- it is turned on, while private members are let through by canShare either way
+			-- it is turned on
 			Default = toggle.Default ~= false,
 			Function = toggle.Function
 		})

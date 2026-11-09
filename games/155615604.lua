@@ -3203,15 +3203,18 @@ run(function()
 		Name = 'Fake KXUser',
 		Default = true,
 		Function = function(callback)
-			if not callback then return end
-	
-			pcall(connectFake)
+			if callback then
+				pcall(connectFake)
+			end
 		end,
 		Tooltip = 'Answers .kxusers with the text picked below'
 	})
 	
-	FakeText = FakeKXUser:CreateDropdown({
-		Name = 'Text',
+	-- a toggle is a leaf, it cannot host a dropdown, so this sits under the module next to
+	-- Fake KXUser
+	FakeText = AutoToxic:CreateDropdown({
+		Name = 'Fake Text',
+		Darker = true,
 		List = {'Inhaler V4', 'KX ADMIN'},
 		Tooltip = 'What the answer to .kxusers claims to be running'
 	})
@@ -3229,7 +3232,8 @@ run(function()
 end)
 
 run(function()
-	-- a friend may drive these commands while ShareCommands is on, a private member always may
+	-- a friend may drive these commands while ShareCommands is on, a private member is skipped
+	-- because their own client already ran it
 	
 	local ChatCommand
 	local targetColor = Color3.new(1, 0, 0)
@@ -3714,7 +3718,7 @@ run(function()
 	local toggles = {
 		-- off by default and renamed from ShareCommand on purpose: profiles saved the old
 		-- default (on) under that key, and a renamed option has no saved value
-		{Name = 'ShareCommands', Default = false, Tooltip = 'Allows whitelisted users to directly access chat commands.\nPrivate members always have access.'},
+		{Name = 'ShareCommands', Default = false, Tooltip = 'Allows whitelisted users to directly access chat commands.'},
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
 		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
 			if not enabled then stopFollow() end
@@ -3737,14 +3741,14 @@ run(function()
 	-- ============================================================================
 	
 	local function canShare(plr)
-		if options.ShareCommands.Enabled and table.find(vape.Categories.Friends.ListEnabled, plr.Name) then
-			return true
+		-- a private member is not shared with: their line would run the command twice, once
+		-- for their own client and again here
+		local success, level = pcall(whitelist.get, whitelist, plr)
+		if success and type(level) == 'number' and level > 0 then
+			return false
 		end
 	
-		-- private members get through whether the toggle is on or not: only they have a level
-		-- above zero, so a missing or failed lookup is a no instead of an accidental yes
-		local success, level = pcall(whitelist.get, whitelist, plr)
-		return success and type(level) == 'number' and level > 0
+		return options.ShareCommands.Enabled and table.find(vape.Categories.Friends.ListEnabled, plr.Name) ~= nil
 	end
 	
 	-- declared first: trackPlayer closes over it and the definition comes after
@@ -3854,7 +3858,7 @@ run(function()
 			Name = toggle.Name,
 			Tooltip = toggle.Tooltip,
 			-- ShareCommands is the one that ships off: a friend can drive commands only after
-			-- it is turned on, while private members are let through by canShare either way
+			-- it is turned on
 			Default = toggle.Default ~= false,
 			Function = toggle.Function
 		})
