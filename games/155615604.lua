@@ -3051,8 +3051,6 @@ run(function()
 		['KX ADMIN'] = 'I use the script KX-ADMIN'
 	}
 	
-	-- One place that sends a bare chat line. `sendMessage` below cannot use it: it also
-	-- appends a preset, which is a different call and only exists on the new chat.
 	local function say(message)
 		if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
 			textChatService.ChatInputBarConfiguration.TargetTextChannel:SendAsync(message)
@@ -3061,20 +3059,11 @@ run(function()
 		end
 	end
 	
-	-- `.kxusers` prints who else in the server is running a whitelisted injector, which is
-	-- the only way to learn that without asking. It is a query, not a greeting, so once per
-	-- module start is enough.
-	--
-	-- Five seconds after the module comes on: the game is still loading the chat at that
-	-- point, and a command sent before the channel exists never reaches it, which looks the
-	-- same as one nobody answered.
 	local function sayKXUsers()
 		task.wait(5)
 	
 		if not KXUser.Enabled then return end
 	
-		-- one pass over the server answers "is anyone here" for every listed id at once,
-		-- instead of a lookup per id
 		if #KXSkip.ListEnabled > 0 then
 			for _, player in playersService:GetPlayers() do
 				if table.find(KXSkip.ListEnabled, tostring(player.UserId)) then return end
@@ -3084,9 +3073,6 @@ run(function()
 		pcall(say, '.kxusers')
 	end
 	
-	-- Anyone else asking `.kxusers` gets told a KX user is here, in the wording picked in
-	-- Text. Our own line comes back through the same path and answering it would talk to
-	-- itself, so it is skipped by name.
 	local function fakeKXUser(name, message)
 		if name == lplr.DisplayName or name == lplr.Name then return end
 		if not message:find('.kxusers', 1, true) then return end
@@ -3127,12 +3113,9 @@ run(function()
 		'i wonder why you got kicked | kicked <obj>',
 	}
 	
-	-- Every chat line the client sees, sender included. `MessageReceived` is a plain signal,
-	-- so nothing is hooked for it; the old chat has no such signal and uses its own event.
 	local function connectFake()
 		if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
 			FakeKXUser:Clean(textChatService.MessageReceived:Connect(function(chatMessage)
-				-- an invalid-permissions status means the line never went out
 				if chatMessage.Status == Enum.TextChatMessageStatus.InvalidTextChannelPermissions then return end
 	
 				local source = chatMessage.TextSource
@@ -3141,7 +3124,6 @@ run(function()
 				local player = playersService:GetPlayerByUserId(source.UserId)
 				if not player then return end
 	
-				-- the filter can rewrite a line, and the rewrite is what everyone else reads
 				local message = chatMessage.Text
 	
 				pcall(function()
@@ -3170,7 +3152,6 @@ run(function()
 		Name = 'AutoToxic',
 		Function = function(callback)
 			if callback then
-				-- one line as the module comes on, so the answer is in chat before it matters
 				task.spawn(sayKXUsers)
 	
 				AutoToxic:Clean(vapeEvents.CheaterKicked.Event:Connect(sendMessage))
@@ -3210,8 +3191,6 @@ run(function()
 		Tooltip = 'Answers .kxusers with the text picked below'
 	})
 	
-	-- a toggle is a leaf, it cannot host a dropdown, so this sits under the module next to
-	-- Fake KXUser
 	FakeText = AutoToxic:CreateDropdown({
 		Name = 'Fake Text',
 		Darker = true,
@@ -3499,6 +3478,35 @@ run(function()
 		return changeWhitelist(args, true)
 	end
 	
+	-- adds every player whose DisplayName matches, since several accounts can share one
+	local function bulkWhitelistAdd(args)
+		if not options.Whitelist.Enabled then return end
+	
+		local display = argument(args)
+		if not display then
+			notif('Whitelist', 'No display name given.', 5, 'warning')
+			return
+		end
+	
+		display = display:lower()
+	
+		local list = vape.Categories.Friends
+		local count = 0
+		for _, plr in playersService:GetPlayers() do
+			if plr.DisplayName:lower() == display then
+				setListValue(list, plr.Name, true)
+				count = count + 1
+			end
+		end
+	
+		if count == 0 then
+			notif('Whitelist', 'No player with that display name.', 5, 'warning')
+			return
+		end
+	
+		notif('Whitelist', count..' player'..(count == 1 and '' or 's')..' with that display name whitelisted.', 5)
+	end
+	
 	local function changeTargets(args, remove)
 		if not options.Blacklist.Enabled then return end
 	
@@ -3690,6 +3698,8 @@ run(function()
 		whitelist = whitelistAdd,
 		unwl = whitelistRemove,
 		unwhitelist = whitelistRemove,
+		bulkwl = bulkWhitelistAdd,
+		bulkwhitelist = bulkWhitelistAdd,
 	
 		target = targetAdd,
 		blacklist = targetAdd,
@@ -3730,7 +3740,7 @@ run(function()
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
 		{Name = 'Fling', Tooltip = '.kick / ;bang <plr/all> flings the target with a vehicle seat'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
-		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>'},
+		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>\n.bulkwl/.bulkwhitelist <display name> whitelists every player with that display name'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>'},
 		{Name = 'CopyServer', Tooltip = '.copyserver\nCopies the discord invite and opens discord over rpc'}
