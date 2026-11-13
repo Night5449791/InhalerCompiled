@@ -891,9 +891,6 @@ run(function()
 	end
 	
 	local function hideSmoke(instance)
-		-- named first: Debris churns with pooled ragdolls, so this runs for far more parts than the
-		-- clouds it is after and the name is the cheapest thing to reject on. A plain find keeps the
-		-- prefix test allocation free, where sub would build a string per part it rejects.
 		if instance.Name ~= 'SmokeVoxel' or smokeSaved[instance] or not instance:IsA('BasePart') then return end
 	
 		local parent = instance.Parent
@@ -924,7 +921,6 @@ run(function()
 			watchDebris(debris)
 		end
 	
-		-- the folder goes away and comes back with the map, so a fresh one has to be picked up again
 		table.insert(connections, workspace.ChildAdded:Connect(function(instance)
 			if instance.Name == 'Debris' then
 				watchDebris(instance)

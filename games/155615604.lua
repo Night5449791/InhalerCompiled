@@ -2617,6 +2617,7 @@ run(function()
 		end
 	})
 	offset = height.Value
+	
 end)
 
 run(function()
@@ -3166,8 +3167,7 @@ run(function()
 	
 	local function getLocalHumanoid()
 		local character = lplr.Character
-		local humanoid = character and character:FindFirstChildOfClass('Humanoid')
-		return humanoid or (entitylib.character and entitylib.character.Humanoid)
+		return character and character:FindFirstChildOfClass('Humanoid')
 	end
 	
 	local function setListValue(list, value, enabled)
@@ -3177,8 +3177,6 @@ run(function()
 	end
 	
 	local function clearListValues(list)
-		if not list or not list.List then return 0 end
-	
 		local count = #list.List + #list.ListEnabled
 		if count == 0 then return 0 end
 	
@@ -3264,10 +3262,9 @@ run(function()
 	local function startFollow(player)
 		stopFollow()
 	
-		local module
-		if not pcall(function()
-			module = require(lplr.PlayerScripts.PlayerModule).controls
-		end) or not module or not module.moveFunction then
+		local success, controls = pcall(require, lplr.PlayerScripts.PlayerModule)
+		local module = success and controls and controls.controls
+		if not (module and module.moveFunction) then
 			notif('ChatCommand', 'Follow is not supported in this game.', 5, 'warning')
 			return
 		end
@@ -3392,29 +3389,36 @@ run(function()
 	local function bulkWhitelistAdd(args)
 		if not options.Whitelist.Enabled then return end
 	
-		local display = argument(args)
-		if not display then
+		local text = argument(args)
+		if not text then
 			notif('Whitelist', 'No display name given.', 5, 'warning')
 			return
 		end
 	
-		display = display:lower()
+		text = text:lower()
+	
+		if text:sub(-1) ~= '*' then
+			text = text..'*'
+		end
+	
+		local pattern = '^'..text:gsub('([%^%$%(%)%%%.%[%]%+%-%?])', '%%%1'):gsub('%*', '.*')..'$'
 	
 		local list = vape.Categories.Friends
 		local count = 0
 		for _, plr in playersService:GetPlayers() do
-			if plr.DisplayName:lower() == display then
+			local name, display = plr.Name:lower(), plr.DisplayName:lower()
+			if name:match(pattern) or display:match(pattern) then
 				setListValue(list, plr.Name, true)
 				count = count + 1
 			end
 		end
 	
 		if count == 0 then
-			notif('Whitelist', 'No player with that display name.', 5, 'warning')
+			notif('Whitelist', 'No player matches '..argument(args)..'.', 5, 'warning')
 			return
 		end
 	
-		notif('Whitelist', count..' player'..(count == 1 and '' or 's')..' with that display name whitelisted.', 5)
+		notif('Whitelist', count..' player'..(count == 1 and '' or 's')..' whitelisted.', 5)
 	end
 	
 	local function changeTargets(args, remove)
@@ -3436,10 +3440,9 @@ run(function()
 			return
 		end
 	
-		local name = player.Name
-		setListValue(list, name, not remove)
-		whitelist.customtags[name] = not remove and {{text = 'Exploiter', color = targetColor}} or nil
-		tempTargets[name] = not remove or nil
+		setListValue(list, player.Name, not remove)
+		whitelist.customtags[player.Name] = not remove and {{text = 'Exploiter', color = targetColor}} or nil
+		tempTargets[player.Name] = not remove and true or nil
 		notif('Blacklist', player.DisplayName..' has been '..(remove and 'unblacklisted.' or 'blacklisted.'), 5)
 	end
 	
@@ -3515,13 +3518,11 @@ run(function()
 			targetMode:SetValue(mode)
 		end
 	
-		if player then
-			if #list.List ~= 1 or list.List[1] ~= player.Name or #list.ListEnabled ~= 1 or list.ListEnabled[1] ~= player.Name then
-				table.clear(list.List)
-				table.clear(list.ListEnabled)
-				list:ChangeValue(player.Name)
-				changed = true
-			end
+		if player and (#list.List ~= 1 or list.List[1] ~= player.Name or #list.ListEnabled ~= 1 or list.ListEnabled[1] ~= player.Name) then
+			table.clear(list.List)
+			table.clear(list.ListEnabled)
+			list:ChangeValue(player.Name)
+			changed = true
 		end
 	
 		if not module.Enabled then
@@ -3532,10 +3533,6 @@ run(function()
 		end
 	
 		notif('ChatCommand', 'Flinging '..(player and player.DisplayName or 'everyone')..'.', 5)
-	end
-	
-	local function kickTarget(args)
-		return startFling(args)
 	end
 	
 	local function reloadVape()
@@ -3557,7 +3554,7 @@ run(function()
 	end
 	
 	local function openDiscordInvite(code)
-		if typeof(request) ~= 'function' then return false end
+		if typeof(request) ~= 'function' then return end
 	
 		local body = httpService:JSONEncode({
 			nonce = httpService:GenerateGUID(false),
@@ -3579,8 +3576,6 @@ run(function()
 				Body = body
 			})
 		end
-	
-		return true
 	end
 	
 	local function handleCopyServer()
@@ -3623,8 +3618,8 @@ run(function()
 		rj = rejoinServer,
 		rejoin = rejoinServer,
 	
-		kick = kickTarget,
-		bang = kickTarget,
+		kick = startFling,
+		bang = startFling,
 	
 		reload = reloadVape,
 		copyserver = handleCopyServer
@@ -3643,7 +3638,7 @@ run(function()
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
 		{Name = 'Fling', Tooltip = '.kick / ;bang <plr/all> flings the target with a vehicle seat'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
-		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>\n.bulkwl/.bulkwhitelist <display name> whitelists every player with that display name'},
+		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>\n.bulkwl/.bulkwhitelist <name> whitelists everyone matching the name, name* matches any prefix'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
 		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>'},
 		{Name = 'CopyServer', Tooltip = '.copyserver\nCopies the discord invite and opens discord over rpc'}
@@ -3919,7 +3914,6 @@ end)
 run(function()
 	local CheaterDetector
 	local webhookUrl
-	local whitelist = vape.Libraries.whitelist
 	local jsonEncode, jsonDecode = httpService.JSONEncode, httpService.JSONDecode
 	local osDate, osTime = os.date, os.time
 	local dbVersion = 3
@@ -3935,8 +3929,8 @@ run(function()
 	
 	local function countCheaters(names, users)
 		local count = 0
-		for _ in names do count += 1 end
-		for _ in users do count += 1 end
+		for _ in names do count = count + 1 end
+		for _ in users do count = count + 1 end
 		return count
 	end
 	
@@ -3949,9 +3943,7 @@ run(function()
 	end
 	
 	local function notify(text, duration, type)
-		if vape.Notifications then
-			notif('CheaterDetector', text, duration, type)
-		end
+		notif('CheaterDetector', text, duration, type)
 	end
 	
 	local function saveCheaters()
@@ -4026,9 +4018,9 @@ run(function()
 			saveCheaters()
 			notify('Upgraded cheater database to v'..dbVersion..'.', 10)
 		elseif restored then
-			saveCheaters() -- write the recovered data back over the broken file
+			saveCheaters()
 		elseif content and not isfile(backupPath) then
-			pcall(writefile, backupPath, content) -- seed the backup on first run
+			pcall(writefile, backupPath, content)
 		end
 	end
 	
@@ -4084,12 +4076,11 @@ run(function()
 				return hit, table.concat(words, ' ', i + 1), name
 			end
 	
-			local wildcard = lowered:find('*', 1, true)
-				and '^'..lowered:gsub('([%^%$%(%)%%%.%[%]%+%-%?])', '%%%1'):gsub('%*', '.*')..'$'
+			local wildcard = lowered:find('*', 1, true) ~= nil
 			local partial, wildcardMatches
 	
 			for _, entry in entries do
-				if wildcard and (entry[2]:match(wildcard) or entry[3]:match(wildcard)) then
+				if wildcard and (matchesNamePattern(entry[2], lowered) or matchesNamePattern(entry[3], lowered)) then
 					wildcardMatches = wildcardMatches or {}
 					wildcardMatches[#wildcardMatches + 1] = entry[1]
 				end
@@ -4144,9 +4135,10 @@ run(function()
 	
 		task.spawn(function()
 			local sent, err = webhook.sendEmbed(url, {
-				title = removed and '✅ Cheater Removed / Unflagged' or '🚨 Detected Cheater',
+				title = removed and '✅ Cheater Removed / Unflagged' or '🚨 Detected Skid Target',
 				description = 'User: '..label..' (@'..handle..')\nID: '..id,
 				color = removed and embedGreen or embedRed,
+				footer = {text = 'Webhook via Inhaler V4'},
 				fields = fields
 			}, webhookName)
 	
@@ -4177,7 +4169,7 @@ run(function()
 					for _, matched in wildcardMatches do
 						if getCheaterReason(matched) ~= nil then
 							editCheater(matched.Name, nil, true)
-							removed += 1
+							removed = removed + 1
 						end
 					end
 	
@@ -4339,8 +4331,7 @@ run(function()
 				CheaterDetector:Clean(playersService.PlayerRemoving:Connect(playerRemoving))
 				CheaterDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(autoAddCheater))
 	
-				cheaterOptions.Teleports.Object.Visible = cheaterOptions.AutomaticAdd.Enabled
-				cheaterOptions.Speed.Object.Visible = cheaterOptions.AutomaticAdd.Enabled
+				setMovementOptionsVisible(cheaterOptions.AutomaticAdd.Enabled)
 	
 				for _, v in playersService:GetPlayers() do
 					playerAdded(v)
@@ -4368,8 +4359,7 @@ run(function()
 		Name = 'Automatic Add',
 		Default = false,
 		Function = function(enabled)
-			cheaterOptions.Teleports.Object.Visible = enabled
-			cheaterOptions.Speed.Object.Visible = enabled
+			setMovementOptionsVisible(enabled)
 		end,
 		Tooltip = 'Adds a player to the cheater list when CheatDetector flags an invalid humanoid state or an invalid animation; the two options below add the movement flags as well.\nThe reason is logged as exploits/<flag>.'
 	})
@@ -4396,6 +4386,11 @@ run(function()
 		Tooltip = 'Also add players flagged for speeding'
 	})
 	
+	local function setMovementOptionsVisible(visible)
+		cheaterOptions.Teleports.Object.Visible = visible
+		cheaterOptions.Speed.Object.Visible = visible
+	end
+	
 	cheaterOptions.Webhook = CheaterDetector:CreateToggle({
 		Name = 'Webhook',
 		Default = false,
@@ -4408,7 +4403,7 @@ run(function()
 	})
 	
 	webhookUrl = CheaterDetector:CreateTextBox({
-		Name = 'Webhook URL', -- for anyone reading this, we WONT LOG ur discord webhook and never will. dashboard is used to manage inhaler users
+		Name = 'Webhook URL',
 		Placeholder = 'https://discord.com/api/webhooks/...',
 		Visible = false,
 		Darker = true,
@@ -4512,6 +4507,7 @@ run(function()
 		end,
 		Tooltip = 'Prevent certain methods of flinging you'
 	})
+	
 end)
 
 run(function()
@@ -4909,7 +4905,7 @@ run(function()
 				end
 	
 				teleportService:TeleportToPlaceInstance(placeId, id)
-				JobId:SetValue('') -- spent, don't leave it saved to be rejoined by accident
+				JobId:SetValue('')
 			end
 		end,
 		Tooltip = 'Teleports into a specific server using its job id\nReinjects after the teleport just like ServerHop does.'
@@ -5492,7 +5488,7 @@ run(function()
 				return
 			end
 	
-			startVal += increment * runService.RenderStepped:Wait() * 60
+			startVal = startVal + increment * runService.RenderStepped:Wait() * 60
 		end
 	end
 	
@@ -5877,9 +5873,9 @@ run(function()
 	
 					if Sway.Enabled then
 						if target.Magnitude > 0.1 then
-							target += (camCF * CFrame.new(math.sin(clock * 10) * 0.06, 0, 0)).Position - camCF.Position
+							target = target + ((camCF * CFrame.new(math.sin(clock * 10) * 0.06, 0, 0)).Position - camCF.Position)
 						else
-							target += (camCF * CFrame.new(0, math.sin(clock) * 0.04, 0)).Position - camCF.Position
+							target = target + ((camCF * CFrame.new(0, math.sin(clock) * 0.04, 0)).Position - camCF.Position)
 						end
 					end
 	

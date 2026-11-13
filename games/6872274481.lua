@@ -1218,8 +1218,8 @@ run(function()
 	
 	local function wrapAngle(num)
 		num = num % math.pi
-		num -= num >= (math.pi / 2) and math.pi or 0
-		num += num < -(math.pi / 2) and math.pi or 0
+		num = num - (num >= (math.pi / 2) and math.pi or 0)
+		num = num + (num < -(math.pi / 2) and math.pi or 0)
 		return num
 	end
 	
@@ -1280,7 +1280,7 @@ run(function()
 					local diffPitch = math.asin(facing.Y) - math.asin(target.Y)
 					local move = Vector2.new(diffYaw, diffPitch) // mouseScale
 	
-					move *= alpha
+					move = move * alpha
 	
 					if typeof(mousemoverel) == 'function' then
 						mousemoverel(move.X, move.Y)
