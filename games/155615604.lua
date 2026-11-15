@@ -4036,6 +4036,11 @@ run(function()
 	local embedGreen = 5763911
 	local webhookName = 'Inhaler CheaterDetector'
 	
+	local function setMovementOptionsVisible(visible)
+		cheaterOptions.Teleports.Object.Visible = visible
+		cheaterOptions.Speed.Object.Visible = visible
+	end
+	
 	local function countCheaters(names, users)
 		local count = 0
 		for _ in names do count = count + 1 end
@@ -4662,11 +4667,6 @@ run(function()
 		Darker = true,
 		Tooltip = 'Also add players flagged for speeding'
 	})
-	
-	local function setMovementOptionsVisible(visible)
-		cheaterOptions.Teleports.Object.Visible = visible
-		cheaterOptions.Speed.Object.Visible = visible
-	end
 	
 	cheaterOptions.Webhook = CheaterDetector:CreateToggle({
 		Name = 'Webhook',
