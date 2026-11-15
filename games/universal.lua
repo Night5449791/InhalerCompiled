@@ -5937,6 +5937,8 @@ run(function()
 	local Position
 	local Speed
 	local TargetName
+	local LoopDelay
+	local looping = false
 	
 	local function parseVector3(text)
 		local split = text:split(',')
@@ -5992,8 +5994,7 @@ run(function()
 		local position = getTargetPosition()
 	
 		if not position then
-			notif('NetworkOwnershipDebugger', 'No target position found.', 5, 'warning')
-			return
+			return false
 		end
 	
 		if ControlMode.Value == 'Velocity' then
@@ -6001,7 +6002,7 @@ run(function()
 				part.AssemblyLinearVelocity = (position - part.Position).Unit * Speed.Value
 			end
 	
-			return
+			return true
 		end
 	
 		local player = getTargetPlayer()
@@ -6012,7 +6013,7 @@ run(function()
 	
 			if root then
 				root.CFrame = CFrame.lookAt(position, position - root.CFrame.LookVector)
-				return
+				return true
 			end
 		end
 	
@@ -6028,6 +6029,8 @@ run(function()
 				part.CFrame = CFrame.lookAt(position + (part.Position - position).Unit * 4, position)
 			end
 		end
+	
+		return true
 	end
 	
 	NetworkOwnershipDebugger = vape.Categories.Render:CreateModule({
@@ -6081,10 +6084,37 @@ run(function()
 		Default = 100,
 		Decimal = 1
 	})
+	LoopDelay = NetworkOwnershipDebugger:CreateSlider({
+		Name = 'Loop delay',
+		Min = 0,
+		Max = 1,
+		Default = 0,
+		Decimal = 100,
+		Tooltip = 'Seconds between each control pass'
+	})
 	NetworkOwnershipDebugger:CreateButton({
 		Name = 'Control Parts',
 		Function = function()
-			runControl()
+			if looping then
+				looping = false
+				notif('NetworkOwnershipDebugger', 'Stopped controlling parts', 5)
+				return
+			end
+	
+			looping = true
+			notif('NetworkOwnershipDebugger', 'Controlling parts, press again to stop', 5)
+	
+			task.spawn(function()
+				while looping do
+					if not runControl() then
+						looping = false
+						notif('NetworkOwnershipDebugger', 'No target position found.', 5, 'warning')
+						break
+					end
+	
+					task.wait(LoopDelay.Value)
+				end
+			end)
 		end,
 		Tooltip = 'Velocity throws every unanchored part at the target, CFrame teleports the character or the parts to it'
 	})
@@ -9308,13 +9338,20 @@ run(function()
 	local function modifyPart(part)
 		if modified[part] then return end
 	
-		local current = part.LocalTransparencyModifier
-		if current ~= 0 then
-			originals[part] = current
-		end
-	
+		originals[part] = part.LocalTransparencyModifier
 		modified[part] = true
 		part.LocalTransparencyModifier = 0.5
+	end
+	
+	local function restoreParts()
+		for part, value in originals do
+			if part.Parent then
+				part.LocalTransparencyModifier = value
+			end
+		end
+	
+		table.clear(modified)
+		table.clear(originals)
 	end
 	
 	local function startScan()
@@ -9352,13 +9389,7 @@ run(function()
 				startScan()
 			else
 				scanToken = scanToken + 1
-	
-				for part in modified do
-					part.LocalTransparencyModifier = originals[part] or 0
-				end
-	
-				table.clear(modified)
-				table.clear(originals)
+				restoreParts()
 			end
 		end,
 		Tooltip = 'Renders whitelisted parts through walls.'
