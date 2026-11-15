@@ -3556,6 +3556,67 @@ run(function()
 		notif('ChatCommand', 'Flinging '..(player and player.DisplayName or 'everyone')..'.', 5)
 	end
 	
+	local function profileExists(name)
+		local success, data = pcall(readfile, 'newvape/profiles/'..name..vape.Place..'.txt')
+		return success and data ~= nil and data ~= ''
+	end
+	
+	local function loadProfile(args)
+		if not options.LoadProfile.Enabled then return end
+	
+		local profiles = vape.Categories.Profiles
+		local text = argument(args)
+		if not text then
+			local names = {}
+			for _, profile in profiles.List do
+				if profile.Name ~= '' then
+					table.insert(names, profile.Name)
+				end
+			end
+	
+			notif('ChatCommand', #names > 0 and 'Profiles: '..table.concat(names, ', ') or 'No profiles found.', 5)
+			return
+		end
+	
+		local lowered = text:lower()
+		local name, partial
+		for _, profile in profiles.List do
+			local profileName = profile.Name:lower()
+			if profileName == lowered then
+				name = profile.Name
+				break
+			end
+	
+			if not partial and profileName:sub(1, #lowered) == lowered then
+				partial = profile.Name
+			end
+		end
+	
+		name = name or partial or (profileExists(text) and text or nil)
+		if not name then
+			notif('ChatCommand', 'No profile found.', 5, 'warning')
+			return
+		end
+	
+		if name == vape.Profile then
+			notif('ChatCommand', name..' is already loaded.', 5)
+			return
+		end
+	
+		if not profileExists(name) then
+			notif('ChatCommand', 'The '..name..' profile is empty.', 5, 'warning')
+			return
+		end
+	
+		if not profiles:GetValue(name) then
+			profiles:ChangeValue(name)
+		end
+	
+		vape:Save(name)
+		vape:Load(true)
+		profiles:ChangeValue()
+	end
+	
 	local function reloadVape()
 		if not options.ReloadVape.Enabled then return end
 	
@@ -3644,6 +3705,9 @@ run(function()
 		kick = startFling,
 		bang = startFling,
 	
+		lp = loadProfile,
+		loadprofile = loadProfile,
+	
 		reload = reloadVape,
 		copyserver = handleCopyServer
 	}
@@ -3660,6 +3724,7 @@ run(function()
 		{Name = 'Rejoin', Tooltip = '.rj\n.rejoin'},
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
 		{Name = 'Fling', Tooltip = '.kick / ;bang <plr/all> flings the target with a vehicle seat'},
+		{Name = 'LoadProfile', Tooltip = '.lp/.loadprofile <name>\n.lp lists every profile'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>\n.bulkwl/.bulkwhitelist <name> whitelists everyone matching the name, name* matches any prefix'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
