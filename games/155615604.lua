@@ -247,6 +247,15 @@ run(function()
 			return
 		end
 
+		if select(1, whitelist:get(plr)) ~= 0 or table.find(vape.Categories.Friends.ListEnabled, plr.Name) ~= nil then
+			return
+		end
+
+		local cheaterDetector = vape.Modules and vape.Modules.CheaterDetector
+		if cheaterDetector and cheaterDetector.IsExcluded and cheaterDetector:IsExcluded(plr) then
+			return
+		end
+
 		if not self.Flags[plr.UserId] then
 			self.Flags[plr.UserId] = {}
 		end
@@ -3478,6 +3487,18 @@ run(function()
 		return changeCheater(args, true)
 	end
 	
+	local function skidExclude(args)
+		if not options.Cheater.Enabled then return end
+	
+		local module = vape.Modules and vape.Modules.CheaterDetector
+		if not (module and module.ExcludeCheater) then
+			notif('ChatCommand', 'CheaterDetector is not available in this game.', 5, 'warning')
+			return
+		end
+	
+		module:ExcludeCheater(args)
+	end
+	
 	local function hopServer()
 		enableModule('ServerHop')
 	end
@@ -3533,6 +3554,67 @@ run(function()
 		end
 	
 		notif('ChatCommand', 'Flinging '..(player and player.DisplayName or 'everyone')..'.', 5)
+	end
+	
+	local function profileExists(name)
+		local success, data = pcall(readfile, 'newvape/profiles/'..name..vape.Place..'.txt')
+		return success and data ~= nil and data ~= ''
+	end
+	
+	local function loadProfile(args)
+		if not options.LoadProfile.Enabled then return end
+	
+		local profiles = vape.Categories.Profiles
+		local text = argument(args)
+		if not text then
+			local names = {}
+			for _, profile in profiles.List do
+				if profile.Name ~= '' then
+					table.insert(names, profile.Name)
+				end
+			end
+	
+			notif('ChatCommand', #names > 0 and 'Profiles: '..table.concat(names, ', ') or 'No profiles found.', 5)
+			return
+		end
+	
+		local lowered = text:lower()
+		local name, partial
+		for _, profile in profiles.List do
+			local profileName = profile.Name:lower()
+			if profileName == lowered then
+				name = profile.Name
+				break
+			end
+	
+			if not partial and profileName:sub(1, #lowered) == lowered then
+				partial = profile.Name
+			end
+		end
+	
+		name = name or partial or (profileExists(text) and text or nil)
+		if not name then
+			notif('ChatCommand', 'No profile found.', 5, 'warning')
+			return
+		end
+	
+		if name == vape.Profile then
+			notif('ChatCommand', name..' is already loaded.', 5)
+			return
+		end
+	
+		if not profileExists(name) then
+			notif('ChatCommand', 'The '..name..' profile is empty.', 5, 'warning')
+			return
+		end
+	
+		if not profiles:GetValue(name) then
+			profiles:ChangeValue(name)
+		end
+	
+		vape:Save(name)
+		vape:Load(true)
+		profiles:ChangeValue()
 	end
 	
 	local function reloadVape()
@@ -3612,6 +3694,8 @@ run(function()
 	
 		addskid = skidAdd,
 		delskid = skidRemove,
+		excludeskid = skidExclude,
+		antiskid = skidExclude,
 	
 		hop = hopServer,
 		serverhop = hopServer,
@@ -3620,6 +3704,9 @@ run(function()
 	
 		kick = startFling,
 		bang = startFling,
+	
+		lp = loadProfile,
+		loadprofile = loadProfile,
 	
 		reload = reloadVape,
 		copyserver = handleCopyServer
@@ -3637,10 +3724,11 @@ run(function()
 		{Name = 'Rejoin', Tooltip = '.rj\n.rejoin'},
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
 		{Name = 'Fling', Tooltip = '.kick / ;bang <plr/all> flings the target with a vehicle seat'},
+		{Name = 'LoadProfile', Tooltip = '.lp/.loadprofile <name>\n.lp lists every profile'},
 		{Name = 'ReloadVape', Tooltip = '.reload'},
 		{Name = 'Whitelist', Tooltip = '.wl/.whitelist <plr>\n.unwl/.unwhitelist <plr>\n.bulkwl/.bulkwhitelist <name> whitelists everyone matching the name, name* matches any prefix'},
 		{Name = 'Blacklist', Tooltip = '.target/.blacklist <plr>\n.untarget/.unblacklist <plr>\n.untarget all/.target all clears every target'},
-		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>'},
+		{Name = 'Cheater', Tooltip = '.addskid <plr> <reason>\n.delskid <plr>\n.excludeskid/.antiskid <plr>'},
 		{Name = 'CopyServer', Tooltip = '.copyserver\nCopies the discord invite and opens discord over rpc'}
 	}
 	
@@ -3780,6 +3868,17 @@ run(function()
 	
 	local function isWhitelisted(plr)
 		return select(1, whitelist:get(plr)) ~= 0
+			or table.find(vape.Categories.Friends.ListEnabled, plr.Name) ~= nil
+	end
+	
+	local function isExcluded(plr)
+		local module = vape.Modules and vape.Modules.CheaterDetector
+		if not (module and module.IsExcluded) then return false end
+		return module:IsExcluded(plr)
+	end
+	
+	local function isIgnored(plr)
+		return isWhitelisted(plr) or isExcluded(plr)
 	end
 	
 	local pingValue, pingTime = 0, 0
@@ -3814,7 +3913,7 @@ run(function()
 		Function = function(callback)
 			if callback then
 				CheatDetector:Clean(vapeEvents.CheatFlagged.Event:Connect(function(plr, flagType)
-					if isWhitelisted(plr) then return end
+					if isIgnored(plr) then return end
 	
 					notif('CheatDetector', 'This player may be cheating! ('..flagType..'): '..plr.Name, 15, 'warning')
 					if AddTarget.Enabled then
@@ -3839,7 +3938,7 @@ run(function()
 					local movement = getPing() <= PingLimit.Value
 	
 					for _, entity in entitylib.List do
-						if entity.Health > 0 and entity.Player and not isWhitelisted(entity.Player) and not Cheats.Flagged[entity.Player.UserId] then
+						if entity.Health > 0 and entity.Player and not isIgnored(entity.Player) and not Cheats.Flagged[entity.Player.UserId] then
 							local root = entity.RootPart
 							local humanoid = entity.Humanoid
 							local playerPos = root.Position
@@ -3909,6 +4008,7 @@ run(function()
 		Suffix = 'ms',
 		Tooltip = 'Stops the movement checks (speed, teleport, highjump, noclip) while your ping is over this, high ping makes them flag innocent players.\nHumanoid state and invalid animation detection keep running.'
 	})
+	
 end)
 
 run(function()
@@ -3916,12 +4016,21 @@ run(function()
 	local webhookUrl
 	local jsonEncode, jsonDecode = httpService.JSONEncode, httpService.JSONDecode
 	local osDate, osTime = os.date, os.time
-	local dbVersion = 3
+	local dbVersion = 4
 	local cheaterOptions = {}
 	local filePath = 'newvape/cheaters.json'
 	local backupPath = 'newvape/cheaters.json.bak'
 	local brokenPath = 'newvape/cheaters.json.broken'
-	local Cheaters = {Version = dbVersion, Names = {}, Users = {}, Count = 0}
+	local Cheaters = {
+		Version = dbVersion,
+		Names = {},
+		Users = {},
+		Excluded = {
+			Users = {},
+			Names = {}
+		},
+		Count = 0
+	}
 	local tagColor = Color3.new(1, 0, 0)
 	local embedRed = 15548997
 	local embedGreen = 5763911
@@ -3940,6 +4049,13 @@ run(function()
 	
 	local function isWhitelisted(plr)
 		return select(1, whitelist:get(plr)) ~= 0
+			or table.find(vape.Categories.Friends.ListEnabled, plr.Name) ~= nil
+	end
+	
+	local function isExcluded(plr)
+		return Cheaters.Excluded.Users[tostring(plr.UserId)] ~= nil
+			or Cheaters.Excluded.Names[plr.Name:lower()] ~= nil
+			or Cheaters.Excluded.Names[plr.DisplayName:lower()] ~= nil
 	end
 	
 	local function notify(text, duration, type)
@@ -4012,6 +4128,13 @@ run(function()
 	
 		Cheaters.Names = type(data.Names) == 'table' and data.Names or {}
 		Cheaters.Users = type(data.Users) == 'table' and data.Users or {}
+	
+		local excluded = type(data.Excluded) == 'table' and data.Excluded or {}
+		Cheaters.Excluded = {
+			Users = type(excluded.Users) == 'table' and excluded.Users or {},
+			Names = type(excluded.Names) == 'table' and excluded.Names or {}
+		}
+	
 		Cheaters.Count = countCheaters(Cheaters.Names, Cheaters.Users)
 	
 		if upgraded then
@@ -4034,6 +4157,8 @@ run(function()
 	end
 	
 	local function getCheaterReason(plr)
+		if isExcluded(plr) then return end
+	
 		local user = Cheaters.Users[tostring(plr.UserId)]
 		if user then
 			return user.Reason or 'known cheater'
@@ -4049,6 +4174,55 @@ run(function()
 		end
 	
 		return value:match('^'..pattern:gsub('([%^%$%(%)%%%.%[%]%+%-%?])', '%%%1'):gsub('%*', '.*')..'$') ~= nil
+	end
+	
+	local function clearExclusion(plr, name)
+		local cleared = false
+	
+		if not plr then
+			local lowered = name:lower()
+	
+			if Cheaters.Excluded.Names[lowered] then
+				Cheaters.Excluded.Names[lowered] = nil
+				cleared = true
+			end
+	
+			local matchedId, matchCount
+			for userId, entry in Cheaters.Excluded.Users do
+				if type(entry) == 'table'
+					and ((type(entry.Name) == 'string' and entry.Name:lower() == lowered)
+						or (type(entry.DisplayName) == 'string' and entry.DisplayName:lower() == lowered)) then
+					matchedId = userId
+					matchCount = (matchCount or 0) + 1
+				end
+			end
+	
+			if matchCount == 1 then
+				Cheaters.Excluded.Users[matchedId] = nil
+				cleared = true
+			end
+	
+			return cleared
+		end
+	
+		local userId = tostring(plr.UserId)
+		if Cheaters.Excluded.Users[userId] then
+			Cheaters.Excluded.Users[userId] = nil
+			cleared = true
+		end
+	
+		local username, displayName = plr.Name:lower(), plr.DisplayName:lower()
+		if Cheaters.Excluded.Names[username] then
+			Cheaters.Excluded.Names[username] = nil
+			cleared = true
+		end
+	
+		if Cheaters.Excluded.Names[displayName] then
+			Cheaters.Excluded.Names[displayName] = nil
+			cleared = true
+		end
+	
+		return cleared
 	end
 	
 	local function splitCheaterText(text)
@@ -4226,6 +4400,13 @@ run(function()
 		local nameReason = not storedUserId and Cheaters.Names[lowered]
 		local existing = onlineReason or (storedUser and (storedUser.Reason or 'known cheater')) or nameReason
 	
+		if not remove then
+			local cleared = clearExclusion(plr, name)
+			if cleared and existing then
+				saveCheaters()
+			end
+		end
+	
 		if not remove and existing then
 			return notify((plr and plr.DisplayName or name)..' is already on the cheater list ('..existing..'), not added again.', 10, 'warning')
 		end
@@ -4264,8 +4445,96 @@ run(function()
 		notify((plr and plr.DisplayName or name)..(remove and ' removed from the cheater list.' or ' added to the cheater list. ('..reason..')'), 10)
 	end
 	
+	local function excludeCheater(text)
+		text = trimText(text)
+		if not text or text == '' then
+			return notify('No player given.', 8, 'warning')
+		end
+	
+		local plr, _, name, wildcardMatches = splitCheaterText(text)
+	
+		if wildcardMatches then
+			if #wildcardMatches == 0 then
+				return notify('No online players match that pattern.', 8, 'warning')
+			end
+	
+			for _, matched in wildcardMatches do
+				excludeCheater(matched.Name)
+			end
+			return
+		end
+	
+		local storedUserId
+	
+		if not plr then
+			for userId, user in Cheaters.Users do
+				if type(user) == 'table'
+					and ((type(user.Name) == 'string' and matchesNamePattern(user.Name, name))
+						or (type(user.DisplayName) == 'string' and matchesNamePattern(user.DisplayName, name))) then
+					storedUserId = tostring(userId)
+					break
+				end
+			end
+		end
+	
+		if plr then
+			local userId = tostring(plr.UserId)
+			Cheaters.Excluded.Users[userId] = {
+				Name = plr.Name,
+				DisplayName = plr.DisplayName
+			}
+			Cheaters.Users[userId] = nil
+			Cheaters.Names[plr.Name:lower()] = nil
+			Cheaters.Names[plr.DisplayName:lower()] = nil
+			Cheats.Flagged[plr.UserId] = nil
+			Cheats.FlaggedInfo[plr.UserId] = nil
+			Cheats.Flags[plr.UserId] = nil
+			tagCheater(plr)
+	
+			local entity = entitylib.getEntity(plr)
+			if entity then
+				entity.Target = nil
+			end
+		elseif storedUserId then
+			local user = Cheaters.Users[storedUserId]
+			local username = type(user.Name) == 'string' and user.Name or nil
+			local displayName = type(user.DisplayName) == 'string' and user.DisplayName or nil
+			Cheaters.Excluded.Users[storedUserId] = {
+				Name = username,
+				DisplayName = displayName
+			}
+			Cheaters.Users[storedUserId] = nil
+	
+			local storedId = tonumber(storedUserId)
+			if storedId then
+				Cheats.Flagged[storedId] = nil
+				Cheats.FlaggedInfo[storedId] = nil
+				Cheats.Flags[storedId] = nil
+			end
+	
+			if username then
+				Cheaters.Names[username:lower()] = nil
+				whitelist.customtags[username] = nil
+				tempTargets[username] = nil
+			end
+	
+			if displayName then
+				Cheaters.Names[displayName:lower()] = nil
+			end
+		else
+			local lowered = name:lower()
+			Cheaters.Excluded.Names[lowered] = true
+			Cheaters.Names[lowered] = nil
+			whitelist.customtags[name] = nil
+			tempTargets[name] = nil
+		end
+	
+		saveCheaters()
+		notify((plr and plr.DisplayName or name)..' will no longer be flagged as a cheater.', 10)
+	end
+	
 	local function playerAdded(plr)
-		if plr == lplr or isWhitelisted(plr) then return end
+		if plr == lplr or isWhitelisted(plr) or isExcluded(plr) then return end
 	
 		local reason = getCheaterReason(plr)
 		if reason then
@@ -4297,7 +4566,7 @@ run(function()
 		if flagType ~= 'invalid animation' and flagType:sub(1, 13) ~= 'invalid state'
 			and not (flagType == 'teleport' and cheaterOptions.Teleports.Enabled)
 			and not (flagType == 'speed' and cheaterOptions.Speed.Enabled) then return end
-		if plr == lplr or isWhitelisted(plr) or getCheaterReason(plr) then return end
+		if plr == lplr or isWhitelisted(plr) or isExcluded(plr) or getCheaterReason(plr) then return end
 	
 		if cheaterOptions.KXAutoAdd.Value == 'KX compatible' then
 			local message = '.addskid '..plr.DisplayName..' exploits/'..flagType..'(inhalerautoaddskid)'
@@ -4347,6 +4616,14 @@ run(function()
 	
 	function CheaterDetector:RemoveCheater(text)
 		editCheater(text, nil, true)
+	end
+	
+	function CheaterDetector:ExcludeCheater(text)
+		excludeCheater(text)
+	end
+	
+	function CheaterDetector:IsExcluded(plr)
+		return isExcluded(plr)
 	end
 	
 	cheaterOptions.Notifications = CheaterDetector:CreateToggle({
