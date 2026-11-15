@@ -26,40 +26,10 @@ local cloneref = cloneref or function(obj)
 end
 local playersService = cloneref(game:GetService('Players'))
 
-local function migrateFolder(old, new)
-	if not isfolder(old) then return end
-	if not isfolder(new) then
-		makefolder(new)
-	end
-
-	for _, file in listfiles(old) do
-		local name = file:match('[^/\\]+$')
-		local target = new..'/'..name
-		if name and not isfile(target) then
-			writefile(target, readfile(file))
-		end
-	end
-end
-
-migrateFolder('newvape/games', 'InhalerV4/games')
-migrateFolder('newvape/guis', 'InhalerV4/guis')
-migrateFolder('newvape/libraries', 'InhalerV4/libraries')
-migrateFolder('newvape/profiles', 'InhalerV4/profiles')
-if isfile('newvape/main.lua') and not isfile('InhalerV4/main.lua') then
-	writefile('InhalerV4/main.lua', readfile('newvape/main.lua'))
-end
-for _, file in {'commit.txt', 'asset.txt'} do
-	if isfile('newvape/profiles/'..file) and not isfile('InhalerV4/profiles/'..file) then
-		writefile('InhalerV4/profiles/'..file, readfile('newvape/profiles/'..file))
-	end
-end
-delfile('newvape/profiles/commit.txt')
-delfile('newvape/profiles/asset.txt')
-
 local function downloadFile(path, func)
 	if not isfile(path) then
 		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('InhalerV4/profiles/commit.txt')..'/'..select(1, path:gsub('InhalerV4/', '')), true)
+			return game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
 		end)
 		if not suc or res == '404: Not Found' then
 			error(res)
@@ -89,9 +59,9 @@ local function finishLoading()
 			local teleportScript = [[
 				shared.vapereload = true
 				if shared.VapeDeveloper then
-					loadstring(readfile('InhalerV4/loader.lua'), 'loader')()
+					loadstring(readfile('newvape/loader.lua'), 'loader')()
 				else
-					loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('InhalerV4/profiles/commit.txt')..'/loader.lua', true), 'loader')()
+					loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')()
 				end
 			]]
 
@@ -119,28 +89,21 @@ end
 if not isfile('newvape/profiles/gui.txt') then
 	writefile('newvape/profiles/gui.txt', 'new')
 end
-local gui = 'new'
+local gui = 'new'--readfile('newvape/profiles/gui.txt')
 
-if not isfolder('InhalerV4/assets/'..gui) then
-	makefolder('InhalerV4/assets/'..gui)
+if not isfolder('newvape/assets/'..gui) then
+	makefolder('newvape/assets/'..gui)
 end
-if not isfolder('InhalerV4/assets/new') then
-	makefolder('InhalerV4/assets/new')
-end
-if not isfolder('InhalerV4/profiles') then
-	makefolder('InhalerV4/profiles')
-end
-
-vape = loadstring(downloadFile('InhalerV4/guis/'..gui..'.lua'), 'gui')()
+vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
 shared.vape = vape
 
 if not shared.VapeIndependent then
-	loadstring(downloadFile('InhalerV4/games/universal.lua'), 'universal')()
-	if isfile('InhalerV4/games/'..game.PlaceId..'.lua') then
-		loadstring(readfile('InhalerV4/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
+	loadstring(downloadFile('newvape/games/universal.lua'), 'universal')()
+	if isfile('newvape/games/'..game.PlaceId..'.lua') then
+		loadstring(readfile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
 	else
 		if not shared.VapeDeveloper then
-			local success, data = pcall(downloadFile, 'InhalerV4/games/'..game.PlaceId..'.lua')
+			local success, data = pcall(downloadFile, 'newvape/games/'..game.PlaceId..'.lua')
 			if success then
 				loadstring(data, tostring(game.PlaceId))(...)
 			end

@@ -3624,9 +3624,9 @@ run(function()
 			vape:Save()
 			shared.vapereload = true
 			if shared.VapeDeveloper then
-				loadstring(readfile('InhalerV4/loader.lua'), 'loader')()
+				loadstring(readfile('newvape/loader.lua'), 'loader')()
 			else
-				loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('InhalerV4/profiles/commit.txt')..'/loader.lua', true))()
+				loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
 			end
 		end)
 	
@@ -4035,11 +4035,6 @@ run(function()
 	local embedRed = 15548997
 	local embedGreen = 5763911
 	local webhookName = 'Inhaler CheaterDetector'
-	
-	local function setMovementOptionsVisible(visible)
-		cheaterOptions.Teleports.Object.Visible = visible
-		cheaterOptions.Speed.Object.Visible = visible
-	end
 	
 	local function countCheaters(names, users)
 		local count = 0
@@ -4667,6 +4662,11 @@ run(function()
 		Darker = true,
 		Tooltip = 'Also add players flagged for speeding'
 	})
+	
+	local function setMovementOptionsVisible(visible)
+		cheaterOptions.Teleports.Object.Visible = visible
+		cheaterOptions.Speed.Object.Visible = visible
+	end
 	
 	cheaterOptions.Webhook = CheaterDetector:CreateToggle({
 		Name = 'Webhook',
