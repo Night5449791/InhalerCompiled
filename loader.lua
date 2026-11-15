@@ -8,19 +8,16 @@ local delfile = delfile or function(file)
 	writefile(file, '')
 end
 
-local watermarkStart = '--This watermark is used to delete the file if its cached, remove it to make the file persist after '
-local watermark = watermarkStart..'inhaler updates.'
-
-local function isWatermarked(path)
-	local suc, res = pcall(function()
-		return readfile(path)
-	end)
-
-	return suc and res ~= nil and res:sub(1, #watermarkStart) == watermarkStart
+local function correct(path)
+	return isfile(path) and select(1, readfile(path):find('--This watermark is used to delete the file if its cached, remove it to make the file persist after inhaler updates.', 1, true)) == 1
 end
 
 local function downloadFile(path, func)
-	if not isfile(path) then
+	if not correct(path) then
+		if isfile(path) then
+			delfile(path)
+		end
+
 		local suc, res = pcall(function()
 			return game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
 		end)
@@ -28,18 +25,18 @@ local function downloadFile(path, func)
 			error(res)
 		end
 		if path:find('.lua') then
-			res = watermark..'\n'..res
+			res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after inhaler updates.\n'..res
 		end
 		writefile(path, res)
 	end
 	return (func or readfile)(path)
 end
 
-local function wipeFolder(path, force)
+local function wipeFolder(path)
 	if not isfolder(path) then return end
 	for _, file in listfiles(path) do
 		if file:find('loader') then continue end
-		if isfile(file) and (force or isWatermarked(file)) then
+		if not correct(file) then
 			delfile(file)
 		end
 	end
@@ -57,14 +54,11 @@ if not shared.VapeDeveloper then
 	end)
 
 	local assetVer = '1'
-	local cacheVer = '1'
 	local commit = subbed:find('currentOid')
 	commit = commit and subbed:sub(commit + 13, commit + 52) or nil
 	commit = commit and #commit == 40 and commit or 'main'
-	local storedCommit = isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or ''
-	local storedCache = isfile('newvape/profiles/cache.txt') and readfile('newvape/profiles/cache.txt') or ''
 
-	if commit == 'main' or storedCommit ~= commit or storedCache ~= cacheVer then
+	if commit == 'main' or (isfile('newvape/profiles/commit.txt') and readfile('newvape/profiles/commit.txt') or '') ~= commit then
 		wipeFolder('newvape')
 		wipeFolder('newvape/games')
 		wipeFolder('newvape/guis')
@@ -72,11 +66,10 @@ if not shared.VapeDeveloper then
 	end
 
 	if (isfile('newvape/profiles/asset.txt') and readfile('newvape/profiles/asset.txt') or '') ~= assetVer then
-		wipeFolder('newvape/assets', true)
+		wipeFolder('newvape/assets')
 	end
 
 	writefile('newvape/profiles/asset.txt', assetVer)
-	writefile('newvape/profiles/cache.txt', cacheVer)
 	writefile('newvape/profiles/commit.txt', commit)
 end
 
