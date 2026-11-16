@@ -5932,7 +5932,6 @@ end)
 
 run(function()
 	local NetworkOwnershipDebugger
-	local ControlMode
 	local Target
 	local Position
 	local Speed
@@ -6131,19 +6130,6 @@ run(function()
 			return false
 		end
 	
-		if ControlMode.Value == 'CFrame' then
-			local player = getTargetPlayer()
-			local character = player and player.Character
-			local root = character and character:FindFirstChild('HumanoidRootPart')
-	
-			if not root then
-				return false
-			end
-	
-			root.CFrame = CFrame.lookAt(position, position - root.CFrame.LookVector)
-			return true
-		end
-	
 		local speed = Speed.Value
 		local noCollide = NoCollide.Enabled
 		local parts, members = getParts()
@@ -6184,11 +6170,6 @@ run(function()
 			end
 		end,
 		Tooltip = 'Shows the network owner of every part in the world.'
-	})
-	ControlMode = NetworkOwnershipDebugger:CreateDropdown({
-		Name = 'Control mode',
-		List = {'Velocity', 'CFrame'},
-		Tooltip = 'Velocity - throws every unanchored part at the target\nCFrame - moves your character onto the target'
 	})
 	Target = NetworkOwnershipDebugger:CreateDropdown({
 		Name = 'Target',
@@ -6270,7 +6251,7 @@ run(function()
 				end
 			end)
 		end,
-		Tooltip = 'Velocity throws every unanchored part at the target, CFrame teleports your character to it'
+		Tooltip = 'Velocity throws every unanchored part at the target'
 	})
 	
 end)
