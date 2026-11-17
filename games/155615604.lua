@@ -4556,7 +4556,6 @@ end)
 run(function()
 	local CheaterDetector
 	local webhookUrl
-	local webhook = vape.Libraries.webhook
 	local jsonEncode, jsonDecode = httpService.JSONEncode, httpService.JSONDecode
 	local osDate, osTime = os.date, os.time
 	local dbVersion = 4
