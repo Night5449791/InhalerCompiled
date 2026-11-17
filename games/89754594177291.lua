@@ -232,23 +232,43 @@ run(function()
 	local uipallet = vape.Libraries.uipallet
 	local parented = {}
 	local nextRefresh = 0
+	local itemMap
+	local itemMapConfig
+	local colorCache = {}
+	local affordableCache = {}
 	local Folder = Instance.new('Folder')
 	Folder.Name = 'BuyableESP'
 	Folder.Parent = vape.holder
 	
-	-- Button_<Id> is the only link back to Config, which is where the price and label live
+	local function cachedColor(option, cache)
+		if cache.hue ~= option.Hue or cache.sat ~= option.Sat or cache.value ~= option.Value then
+			cache.hue = option.Hue
+			cache.sat = option.Sat
+			cache.value = option.Value
+			cache.color = Color3.fromHSV(option.Hue, option.Sat, option.Value)
+		end
+	
+		return cache.color
+	end
+	
 	local function itemFor(button)
 		local config = israel.Config
 		if not config or not config.Items then return end
 	
-		local id = button.Name:match('^Button_(.+)$')
-		if not id then return end
+		if itemMapConfig ~= config then
+			itemMapConfig = config
+			itemMap = {}
 	
-		for _, item in config.Items do
-			if item.Id == id then
-				return item
+			for _, item in config.Items do
+				if not itemMap[item.Id] then
+					itemMap[item.Id] = item
+				end
 			end
 		end
+	
+		local id = button.Name:match('^Button_(.+)$')
+	
+		return id and itemMap[id]
 	end
 	
 	local function affordable(item)
@@ -257,10 +277,10 @@ run(function()
 	
 	local function colorFor(item)
 		if affordable(item) then
-			return Color3.fromHSV(AffordableColor.Hue, AffordableColor.Sat, AffordableColor.Value)
+			return cachedColor(AffordableColor, affordableCache)
 		end
 	
-		return Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+		return cachedColor(Color, colorCache)
 	end
 	
 	local function Removed(button)
@@ -342,8 +362,12 @@ run(function()
 					if now < nextRefresh then return end
 	
 					nextRefresh = now + 0.5
+					local cash = israel.cash()
+					local affordableColor = cachedColor(AffordableColor, affordableCache)
+					local expensiveColor = cachedColor(Color, colorCache)
+	
 					for button, data in parented do
-						data.text.TextColor3 = colorFor(data.item)
+						data.text.TextColor3 = cash >= (data.item.Price or 0) and affordableColor or expensiveColor
 					end
 				end))
 	
@@ -425,13 +449,40 @@ run(function()
 	local nextRefresh = 0
 	local getfontbounds = vape.Libraries.getfontbounds
 	local uipallet = vape.Libraries.uipallet
+	local ownColorCache = {}
+	local shieldColorCache = {}
+	local baseColorCache = {}
+	local lastTextScale
+	local lastTextSize
 	local Folder = Instance.new('Folder')
 	Folder.Name = 'PlotESP'
 	Folder.Parent = vape.holder
 	
-	local function plotLabel(plot)
-		local owner = israel.plotOwner(plot)
+	local function cachedColor(option, cache)
+		if cache.hue ~= option.Hue or cache.sat ~= option.Sat or cache.value ~= option.Value then
+			cache.hue = option.Hue
+			cache.sat = option.Sat
+			cache.value = option.Value
+			cache.color = Color3.fromHSV(option.Hue, option.Sat, option.Value)
+		end
+	
+		return cache.color
+	end
+	
+	local function getTextSize()
+		local scale = Scale.Value
+	
+		if lastTextScale ~= scale then
+			lastTextScale = scale
+			lastTextSize = getfontbounds('Empty (shield)', 14 * scale, uipallet.Font, Vector2.new(100000, 100000))
+		end
+	
+		return lastTextSize
+	end
+	
+	local function plotLabel(plot, owner)
 		local name = owner and owner.DisplayName or 'Empty'
+	
 		if plot:GetAttribute('NewbieShield') == true then
 			name = name..' (shield)'
 		end
@@ -439,27 +490,38 @@ run(function()
 		return name
 	end
 	
-	local function plotColor(plot)
-		if israel.plotOwner(plot) == lplr then
-			return Color3.fromHSV(OwnColor.Hue, OwnColor.Sat, OwnColor.Value)
+	local function plotColor(plot, owner)
+		if owner == lplr then
+			return cachedColor(OwnColor, ownColorCache)
 		end
 	
 		if plot:GetAttribute('NewbieShield') == true then
-			return Color3.fromHSV(ShieldColor.Hue, ShieldColor.Sat, ShieldColor.Value)
+			return cachedColor(ShieldColor, shieldColorCache)
 		end
 	
-		return Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+		return cachedColor(Color, baseColorCache)
+	end
+	
+	local function refreshPlot(plot)
+		local data = referenced[plot]
+		if not data then return end
+	
+		local owner = israel.plotOwner(plot)
+		local color = plotColor(plot, owner)
+	
+		if data.text then
+			data.text.Text = plotLabel(plot, owner)
+			data.text.TextColor3 = color
+		end
+	
+		if data.highlight then
+			data.highlight.OutlineColor = color
+		end
 	end
 	
 	local function refreshText()
-		for plot, data in referenced do
-			if data.text then
-				data.text.Text = plotLabel(plot)
-				data.text.TextColor3 = plotColor(plot)
-			end
-			if data.highlight then
-				data.highlight.OutlineColor = plotColor(plot)
-			end
+		for plot in referenced do
+			refreshPlot(plot)
 		end
 	end
 	
@@ -488,11 +550,13 @@ run(function()
 		local target = plot.PrimaryPart or plot:FindFirstChild('Base')
 		if not target then return end
 	
+		local owner = israel.plotOwner(plot)
+		local color = plotColor(plot, owner)
 		local highlight = Instance.new('Highlight')
 		highlight.Adornee = target
 		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		highlight.FillColor = plotColor(plot)
-		highlight.OutlineColor = plotColor(plot)
+		highlight.FillColor = color
+		highlight.OutlineColor = color
 		highlight.FillTransparency = FillTransparency.Value
 		highlight.OutlineTransparency = OutlineTransparency.Value
 		highlight.Parent = Folder
@@ -500,7 +564,7 @@ run(function()
 		local billboard
 		local text
 		if ShowText.Enabled then
-			local size = getfontbounds('Empty (shield)', 14 * Scale.Value, uipallet.Font, Vector2.new(100000, 100000))
+			local size = getTextSize()
 			billboard = Instance.new('BillboardGui')
 			billboard.AlwaysOnTop = true
 			billboard.Size = UDim2.fromOffset(size.X + 8, size.Y + 7)
@@ -513,8 +577,8 @@ run(function()
 			text.FontFace = uipallet.Font
 			text.RichText = true
 			text.Size = billboard.Size
-			text.Text = plotLabel(plot)
-			text.TextColor3 = plotColor(plot)
+			text.Text = plotLabel(plot, owner)
+			text.TextColor3 = color
 			text.TextSize = 14 * Scale.Value
 			text.TextStrokeTransparency = 1
 			text.TextStrokeColor3 = Color3.new()
@@ -525,8 +589,12 @@ run(function()
 			highlight = highlight,
 			billboard = billboard,
 			text = text,
-			titleConnection = plot:GetAttributeChangedSignal('OwnerUserId'):Connect(refreshText),
-			shieldConnection = plot:GetAttributeChangedSignal('NewbieShield'):Connect(refreshText),
+			titleConnection = plot:GetAttributeChangedSignal('OwnerUserId'):Connect(function()
+				refreshPlot(plot)
+			end),
+			shieldConnection = plot:GetAttributeChangedSignal('NewbieShield'):Connect(function()
+				refreshPlot(plot)
+			end),
 			connection = plot.Destroying:Connect(function()
 				Removed(plot)
 			end)
@@ -662,18 +730,40 @@ run(function()
 	local nextRefresh = 0
 	local getfontbounds = vape.Libraries.getfontbounds
 	local uipallet = vape.Libraries.uipallet
+	local colorCache = {}
+	local heldColorCache = {}
+	local zoneTextSize
 	local Folder = Instance.new('Folder')
 	Folder.Name = 'ZoneESP'
 	Folder.Parent = vape.holder
 	
-	local function zoneColor(zone)
-		-- HolderUserId is the only stable signal: State is a display word (Neutral/Held/...)
-		local holderId = zone:GetAttribute('HolderUserId')
-		if typeof(holderId) == 'number' and holderId ~= 0 then
-			return Color3.fromHSV(HeldColor.Hue, HeldColor.Sat, HeldColor.Value)
+	local function cachedColor(option, cache)
+		if cache.hue ~= option.Hue or cache.sat ~= option.Sat or cache.value ~= option.Value then
+			cache.hue = option.Hue
+			cache.sat = option.Sat
+			cache.value = option.Value
+			cache.color = Color3.fromHSV(option.Hue, option.Sat, option.Value)
 		end
 	
-		return Color3.fromHSV(Color.Hue, Color.Sat, Color.Value)
+		return cache.color
+	end
+	
+	local function getZoneTextSize()
+		if not zoneTextSize then
+			zoneTextSize = getfontbounds('Neutral 100%', 14, uipallet.Font, Vector2.new(100000, 100000))
+		end
+	
+		return zoneTextSize
+	end
+	
+	local function zoneColor(zone)
+		local holderId = zone:GetAttribute('HolderUserId')
+	
+		if typeof(holderId) == 'number' and holderId ~= 0 then
+			return cachedColor(HeldColor, heldColorCache)
+		end
+	
+		return cachedColor(Color, colorCache)
 	end
 	
 	local function zoneLabel(zone)
@@ -693,16 +783,25 @@ run(function()
 		return state
 	end
 	
-	local function refreshText()
-		for zone, data in referenced do
-			if data.text then
-				data.text.Text = zoneLabel(zone)
-				data.text.TextColor3 = zoneColor(zone)
-			end
+	local function refreshZone(zone)
+		local data = referenced[zone]
+		if not data then return end
 	
-			if data.highlight then
-				data.highlight.OutlineColor = zoneColor(zone)
-			end
+		local color = zoneColor(zone)
+	
+		if data.text then
+			data.text.Text = zoneLabel(zone)
+			data.text.TextColor3 = color
+		end
+	
+		if data.highlight then
+			data.highlight.OutlineColor = color
+		end
+	end
+	
+	local function refreshText()
+		for zone in referenced do
+			refreshZone(zone)
 		end
 	end
 	
@@ -737,11 +836,12 @@ run(function()
 		local target = zone.PrimaryPart or zone:FindFirstChildWhichIsA('BasePart', true)
 		if not target then return end
 	
+		local color = zoneColor(zone)
 		local highlight = Instance.new('Highlight')
 		highlight.Adornee = target
 		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		highlight.FillColor = zoneColor(zone)
-		highlight.OutlineColor = zoneColor(zone)
+		highlight.FillColor = color
+		highlight.OutlineColor = color
 		highlight.FillTransparency = FillTransparency.Value
 		highlight.OutlineTransparency = OutlineTransparency.Value
 		highlight.Parent = Folder
@@ -749,7 +849,7 @@ run(function()
 		local billboard
 		local text
 		if ShowText.Enabled then
-			local size = getfontbounds('Neutral 100%', 14, uipallet.Font, Vector2.new(100000, 100000))
+			local size = getZoneTextSize()
 			billboard = Instance.new('BillboardGui')
 			billboard.AlwaysOnTop = true
 			billboard.Size = UDim2.fromOffset(size.X + 8, size.Y + 7)
@@ -762,7 +862,7 @@ run(function()
 			text.FontFace = uipallet.Font
 			text.Size = billboard.Size
 			text.Text = zoneLabel(zone)
-			text.TextColor3 = zoneColor(zone)
+			text.TextColor3 = color
 			text.TextSize = 14
 			text.TextStrokeTransparency = 1
 			text.TextStrokeColor3 = Color3.new()
@@ -771,7 +871,9 @@ run(function()
 	
 		local connections = {}
 		for _, attribute in {'State', 'Progress', 'HolderName', 'HolderUserId', 'CapturerName'} do
-			table.insert(connections, zone:GetAttributeChangedSignal(attribute):Connect(refreshText))
+			table.insert(connections, zone:GetAttributeChangedSignal(attribute):Connect(function()
+				refreshZone(zone)
+			end))
 		end
 	
 		referenced[zone] = {
@@ -876,18 +978,19 @@ run(function()
 	local Buy
 	local BuyDelay
 	
+	local fireTouchInterest = (getgenv and getgenv().firetouchinterest) or _G.firetouchinterest
+	local itemMap
+	local itemMapConfig
+	
 	local function touch(part)
 		local hrp = lplr.Character and lplr.Character:FindFirstChild('HumanoidRootPart')
 		if not hrp then return end
+		if typeof(fireTouchInterest) ~= 'function' then return end
 	
-		local fire = getgenv().firetouchinterest
-		if typeof(fire) ~= 'function' then return end
-	
-		pcall(fire, hrp, part, 0)
-		pcall(fire, hrp, part, 1)
+		pcall(fireTouchInterest, hrp, part, 0)
+		pcall(fireTouchInterest, hrp, part, 1)
 	end
 	
-	-- the cash pad pays out on touch, and PendingCash tells us whether there is anything to take
 	local function collectPad(plot)
 		if (plot:GetAttribute('PendingCash') or 0) <= 0 then return end
 	
@@ -898,26 +1001,30 @@ run(function()
 		end
 	end
 	
-	-- buttons are Button_<ItemId> pads and Config holds the price, so only offer what we can
-	-- afford and take the cheapest first
 	local function cheapestAffordable(plot)
 		local config = israel.Config
 		local buttons = plot:FindFirstChild('Buttons')
 		if not config or not buttons then return end
 	
-		local byId = {}
-		for _, item in config.Items do
-			if item.Id then
-				byId[item.Id] = item
+		if itemMapConfig ~= config then
+			itemMapConfig = config
+			itemMap = {}
+	
+			for _, item in config.Items do
+				if item.Id and itemMap[item.Id] == nil then
+					itemMap[item.Id] = item
+				end
 			end
 		end
 	
 		local cash = israel.cash()
 		local best, bestPrice
+	
 		for _, button in buttons:GetChildren() do
 			local id = button.Name:match('^Button_(.+)$')
-			local item = id and byId[id]
+			local item = id and itemMap[id]
 			local price = item and (item.Price or 0)
+	
 			if price and price <= cash and (not bestPrice or price < bestPrice) then
 				local pad = button:FindFirstChild('Pad')
 				if pad then
@@ -985,9 +1092,12 @@ run(function()
 	local holder
 	local label
 	
+	local cashUnits = {{1e12, 'T'}, {1e9, 'B'}, {1e6, 'M'}, {1e3, 'K'}}
+	
 	local function formatCash(value)
 		local suffix = ''
-		for _, unit in {{1e12, 'T'}, {1e9, 'B'}, {1e6, 'M'}, {1e3, 'K'}} do
+	
+		for _, unit in cashUnits do
 			if value >= unit[1] then
 				suffix = unit[2]
 				value = value / unit[1]
@@ -998,8 +1108,6 @@ run(function()
 		return string.format(value >= 100 and '%.0f' or '%.1f', value)..suffix
 	end
 	
-	-- PendingCash is the income sitting uncollected on a plot, which is the only public number
-	-- that hints at how rich its owner is
 	local function buildLines()
 		local folder = israel.tycoonsFolder()
 		if not folder then return {} end
