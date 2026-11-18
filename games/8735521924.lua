@@ -419,7 +419,7 @@ run(function()
 		rejoining = true
 	
 		pcall(function()
-			lplr:Kick()
+			lplr:Kick('Inhaler: Anti Votekick is working')
 		end)
 	
 		if Mode.Value == 'ServerHop' then
