@@ -1,133 +1,105 @@
--- adonis bypass for inhaler v4
--- adonis cries
-
 local adonis = {
-	Detected = false,
-	Active = false
+	Name = 'Adonis',
+	Game = '*'
 }
 
-local genv = typeof(getgenv) == 'function' and getgenv() or nil
-local debugInfo = typeof(debug) == 'table' and typeof(debug.info) == 'function' and debug.info or nil
-local originals = {}
 local antiThreads = {}
+local hooks = {}
 
-local function executorFunc(name)
-	local fn = genv and genv[name] or _G[name]
+local function getExecutorFunc(name)
+	local fn = getgenv and getgenv()[name] or _G[name]
 	return typeof(fn) == 'function' and fn or nil
 end
 
-local function findDetectionTables()
-	local found = {}
-	local filtergc = executorFunc('filtergc')
-	if filtergc then
-		local ok, res = pcall(filtergc, 'table', {Keys = {'Detected', 'RLocked'}}, false)
-		if ok and type(res) == 'table' then
-			for _, object in res do
-				found[#found + 1] = object
-			end
-		end
+local function hookFunction(original, replacement)
+	if typeof(hookfunction) ~= 'function' then return original end
+	if typeof(iscclosure) == 'function' and iscclosure(original) and typeof(oth) == 'table' and typeof(oth.hook) == 'function' then
+		return oth.hook(original, replacement)
 	end
-
-	if found[1] then return found end
-
-	local getgc = executorFunc('getgc')
-	if not getgc then return found end
-
-	local ok, objects = pcall(getgc, true)
-	if not ok or type(objects) ~= 'table' then return found end
-
-	for _, object in objects do
-		if type(object) == 'table' and rawget(object, 'Detected') ~= nil and rawget(object, 'RLocked') ~= nil then
-			found[#found + 1] = object
-		end
+	if typeof(islclosure) == 'function' and islclosure(replacement) and typeof(newcclosure) == 'function' then
+		replacement = newcclosure(replacement)
 	end
-
-	return found
-end
-
-local function collectThreads()
-	table.clear(antiThreads)
-	local getreg = executorFunc('getreg')
-	if not (getreg and debugInfo) then return end
-
-	local ok, regs = pcall(getreg)
-	if not ok or type(regs) ~= 'table' then return end
-
-	for _, thread in regs do
-		if typeof(thread) == 'thread' then
-			local sok, source = pcall(debugInfo, thread, 1, 's')
-			if sok and type(source) == 'string' then
-				if source:find('.Core.Anti', 1, true) or source:find('.Plugins.Anti_Cheat', 1, true) then
-					antiThreads[#antiThreads + 1] = thread
-				end
-			end
-		end
-	end
+	return hookfunction(original, replacement)
 end
 
 function adonis.Detect()
-	if adonis.Detected then return true end
-	collectThreads()
-	adonis.Detected = #antiThreads > 0 or #findDetectionTables() > 0
-	return adonis.Detected
-end
+	if typeof(getreg) ~= 'function' or typeof(getgc) ~= 'function' or typeof(isfunctionhooked) ~= 'function' then
+		return false
+	end
 
-local function suppressDetection()
-	return false
+	local detected = false
+	local ok, regs = pcall(getreg)
+	if not ok or type(regs) ~= 'table' then return false end
+
+	for _, thread in regs do
+		if typeof(thread) ~= 'thread' then continue end
+
+		local sok, source = pcall(debug.info, thread, 1, 's')
+		if sok and source and (source:find('.Core.Anti', 1, true) or source:find('.Plugins.Anti_Cheat', 1, true)) then
+			detected = true
+			antiThreads[#antiThreads + 1] = thread
+		end
+	end
+
+	return detected
 end
 
 function adonis.Bypass()
-	if adonis.Active then return true end
-	if not adonis.Detect() then return false end
-
-	local hookfunction = executorFunc('hookfunction')
-	if not hookfunction then
-		adonis.Active = true
-		return true
+	if typeof(coroutine) == 'table' and typeof(coroutine.close) == 'function' then
+		for _, thread in antiThreads do
+			pcall(coroutine.close, thread)
+		end
 	end
 
-	local newcclosure = executorFunc('newcclosure')
-	local hook = newcclosure and newcclosure(suppressDetection) or suppressDetection
-	local isfunctionhooked = executorFunc('isfunctionhooked')
-
-	for _, detectionTable in findDetectionTables() do
-		local detected = rawget(detectionTable, 'Detected')
-		if typeof(detected) == 'function' and not originals[detected] then
-			local alreadyHooked = false
-			if isfunctionhooked then
-				local ok, res = pcall(isfunctionhooked, detected)
-				alreadyHooked = ok and res == true
+	local adonisTables = {}
+	if typeof(filtergc) == 'function' then
+		local ok, result = pcall(filtergc, 'table', {Keys = {'Detected', 'RLocked'}}, false)
+		if ok and type(result) == 'table' then
+			for _, adonisTable in result do
+				if typeof(rawget(adonisTable, 'Detected')) ~= 'function' then continue end
+				adonisTables[#adonisTables + 1] = adonisTable
 			end
-
-			if not alreadyHooked then
-				local ok, original = pcall(hookfunction, detected, hook)
-				if ok and original then
-					originals[detected] = original
-				end
+		end
+	else
+		local ok, objects = pcall(getgc, true)
+		if ok and type(objects) == 'table' then
+			for _, object in objects do
+				if type(object) ~= 'table' then continue end
+				local isAdonisOrigin = typeof(rawget(object, 'Detected')) == 'function' and rawget(object, 'RLocked')
+				if not isAdonisOrigin then continue end
+				adonisTables[#adonisTables + 1] = object
 			end
 		end
 	end
 
-	adonis.Active = true
+	for _, adonisTable in adonisTables do
+		for _, detectionFunc in adonisTable do
+			if typeof(detectionFunc) ~= 'function' or (typeof(isfunctionhooked) == 'function' and isfunctionhooked(detectionFunc)) or hooks[detectionFunc] then
+				continue
+			end
+
+			hooks[detectionFunc] = hookFunction(detectionFunc, function(action, info, nocrash)
+				coroutine.yield()
+				return task.wait(9e9)
+			end)
+		end
+	end
+
 	return true
 end
 
 function adonis.Start()
+	if not adonis.Detect() then return false end
 	return adonis.Bypass()
 end
 
 function adonis.Restore()
-	local hookfunction = executorFunc('hookfunction')
-	if hookfunction then
-		for fn, original in originals do
-			pcall(hookfunction, fn, original)
-		end
+	for detectionFunc, original in hooks do
+		pcall(hookfunction, detectionFunc, original)
 	end
 
-	table.clear(originals)
+	table.clear(hooks)
 	table.clear(antiThreads)
-	adonis.Active = false
-	adonis.Detected = false
 end
 
 return adonis
