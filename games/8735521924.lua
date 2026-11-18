@@ -91,16 +91,22 @@ end
 
 run(function()
 	local SilentAim
-	local Mode
 	local Range
 	local HitChance
 	local oldnamecall
+	local hooked
 	local rand = Random.new()
+
+	local function restoreHook()
+		if not hooked then return end
+		pcall(restorefunction, getrawmetatable(game).__namecall)
+		hooked = nil
+	end
 
 	local function getTarget(origin)
 		if rand.NextNumber(rand, 0, 100) > HitChance.Value then return end
 
-		local entity = entitylib['Entity'..Mode.Value]({
+		local entity = entitylib.EntityMouse({
 			Part = 'Head',
 			Range = Range.Value,
 			Origin = origin,
@@ -116,6 +122,10 @@ run(function()
 	end
 
 	local function namecallHook(...)
+		if not hooked or not SilentAim.Enabled or vape.Loaded == nil or not entitylib then
+			return oldnamecall(...)
+		end
+
 		if getnamecallmethod() ~= 'FindPartOnRayWithIgnoreList' or checkcaller() then
 			return oldnamecall(...)
 		end
@@ -144,26 +154,14 @@ run(function()
 				end
 				local hook = typeof(newcclosure) == 'function' and newcclosure(namecallHook) or namecallHook
 				oldnamecall = hookmetamethod(game, '__namecall', hook)
+				hooked = true
 			else
-				if oldnamecall then
-					pcall(restorefunction, getrawmetatable(game).__namecall)
-					oldnamecall = nil
-				end
+				restoreHook()
 			end
 		end,
 		Tooltip = 'Silently adjusts your aim towards the enemy'
 	})
-	vape:Clean(function()
-		if oldnamecall then
-			pcall(restorefunction, getrawmetatable(game).__namecall)
-			oldnamecall = nil
-		end
-	end)
-	Mode = SilentAim:CreateDropdown({
-		Name = 'Mode',
-		List = {'Mouse', 'Position'},
-		Tooltip = 'Mouse - targets near your crosshair\nPosition - targets closest to your gun'
-	})
+	vape:Clean(restoreHook)
 	Range = SilentAim:CreateSlider({
 		Name = 'Range',
 		Min = 1,
