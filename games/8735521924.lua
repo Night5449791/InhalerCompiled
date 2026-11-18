@@ -91,6 +91,7 @@ end
 
 run(function()
 	local SilentAim
+	local Target
 	local Range
 	local HitChance
 	local oldnamecall
@@ -110,8 +111,8 @@ run(function()
 			Part = 'Head',
 			Range = Range.Value,
 			Origin = origin,
-			Players = true,
-			NPCs = true
+			Players = Target.Players.Enabled,
+			NPCs = Target.NPCs.Enabled
 		})
 
 		if entity then
@@ -162,6 +163,9 @@ run(function()
 		Tooltip = 'Silently adjusts your aim towards the enemy'
 	})
 	vape:Clean(restoreHook)
+	Target = SilentAim:CreateTargets({
+		Players = true
+	})
 	Range = SilentAim:CreateSlider({
 		Name = 'Range',
 		Min = 1,
