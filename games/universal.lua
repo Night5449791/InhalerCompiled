@@ -14,7 +14,7 @@ end
 local function downloadFile(path, func)
 	if not isfile(path) then
 		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+			return game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('InhalerV4/profiles/commit.txt')..'/'..select(1, path:gsub('InhalerV4/', '')), true)
 		end)
 		if not suc or res == '404: Not Found' then
 			error(res)
@@ -71,7 +71,7 @@ local function addBlur(parent)
 	blur.Size = UDim2.new(1, 89, 1, 52)
 	blur.Position = UDim2.fromOffset(-48, -31)
 	blur.BackgroundTransparency = 1
-	blur.Image = getvapeasset('newvape/assets/new/blur.png')
+	blur.Image = getvapeasset('InhalerV4/assets/new/blur.png')
 	blur.ScaleType = Enum.ScaleType.Slice
 	blur.SliceCenter = Rect.new(52, 31, 261, 502)
 	blur.Parent = parent
@@ -233,12 +233,12 @@ local function motorMove(target, cf)
 	task.delay(0, part.Destroy, part)
 end
 
-local hash = loadstring(downloadFile('newvape/libraries/hash.lua'), 'hash')()
-local prediction = loadstring(downloadFile('newvape/libraries/prediction.lua'), 'prediction')()
-entitylib = loadstring(downloadFile('newvape/libraries/entity.lua'), 'entitylibrary')()
+local hash = loadstring(downloadFile('InhalerV4/libraries/hash.lua'), 'hash')()
+local prediction = loadstring(downloadFile('InhalerV4/libraries/prediction.lua'), 'prediction')()
+entitylib = loadstring(downloadFile('InhalerV4/libraries/entity.lua'), 'entitylibrary')()
 
 local webhookLoaded, webhook = pcall(function()
-	return loadstring(downloadFile('newvape/libraries/webhook.lua'), 'webhook')()
+	return loadstring(downloadFile('InhalerV4/libraries/webhook.lua'), 'webhook')()
 end)
 
 local whitelist = {
@@ -247,7 +247,7 @@ local whitelist = {
 	tagcallback = {},
 	data = {WhitelistedUsers = {}},
 	announced = (function()
-		local ok, value = pcall(readfile, 'newvape/profiles/announcement.txt')
+		local ok, value = pcall(readfile, 'InhalerV4/profiles/announcement.txt')
 		return ok and type(value) == 'string' and value ~= '' and value or nil
 	end)(),
 	hashes = setmetatable({}, {
@@ -717,7 +717,7 @@ run(function()
 		if success then
 			return sendToast({
 				toastTitle = text,
-				iconImage = getvapeasset('newvape/assets/new/vape.png'),
+				iconImage = getvapeasset('InhalerV4/assets/new/vape.png'),
 				swipeUpDismiss = true,
 				onActivated = function() end
 			})
@@ -788,7 +788,7 @@ run(function()
 		iconframe.Parent = mainframe
 		local icon = Instance.new('ImageLabel')
 		icon.Size = UDim2.fromOffset(36, 36)
-		icon.Image = getvapeasset('newvape/assets/new/vape.png')
+		icon.Image = getvapeasset('InhalerV4/assets/new/vape.png')
 		icon.BackgroundTransparency = 1
 		icon.Parent = iconframe
 		constraint.MaxSize = Vector2.new(math.max(getfontbounds(text, 20, textlabel.FontFace).X + 80, 600), math.huge)
@@ -819,7 +819,7 @@ run(function()
 		if not active then
 			whitelist.announced = nil
 			pcall(function()
-				delfile('newvape/profiles/announcement.txt')
+				delfile('InhalerV4/profiles/announcement.txt')
 			end)
 			return
 		end
@@ -836,7 +836,7 @@ run(function()
 
 		whitelist.announced = fingerprint
 		pcall(function()
-			writefile('newvape/profiles/announcement.txt', fingerprint)
+			writefile('InhalerV4/profiles/announcement.txt', fingerprint)
 		end)
 
 		pcall(whitelist.announce, whitelist, announcement.text)
@@ -852,7 +852,7 @@ run(function()
 
 		if not first or whitelist.textdata ~= whitelist.olddata then
 			if not first then
-				whitelist.olddata = isfile('newvape/profiles/whitelist.json') and readfile('newvape/profiles/whitelist.json') or nil
+				whitelist.olddata = isfile('InhalerV4/profiles/whitelist.json') and readfile('InhalerV4/profiles/whitelist.json') or nil
 			end
 
 			local suc, res = pcall(function()
@@ -893,7 +893,7 @@ run(function()
 
 			if changed then
 				pcall(function()
-					writefile('newvape/profiles/whitelist.json', whitelist.textdata)
+					writefile('InhalerV4/profiles/whitelist.json', whitelist.textdata)
 				end)
 
 				whitelist:maybeannounce()
@@ -6516,7 +6516,7 @@ run(function()
 	
 	Radar = vape:CreateOverlay({
 		Name = 'Radar',
-		Icon = getvapeasset('newvape/assets/new/radar.png'),
+		Icon = getvapeasset('InhalerV4/assets/new/radar.png'),
 		Size = UDim2.fromOffset(14, 14),
 		Position = UDim2.fromOffset(12, 13),
 		Function = function(callback)
@@ -6737,7 +6737,7 @@ run(function()
 	
 	SessionInfo = vape:CreateOverlay({
 		Name = 'Session Info',
-		Icon = getvapeasset('newvape/assets/new/textgui.png'),
+		Icon = getvapeasset('InhalerV4/assets/new/textgui.png'),
 		Size = UDim2.fromOffset(16, 12),
 		Position = UDim2.fromOffset(12, 14),
 		Function = function(callback)
@@ -6964,7 +6964,7 @@ run(function()
 	
 	Spotify = vape:CreateOverlay({
 		Name = 'Spotify',
-		Icon = getvapeasset('newvape/assets/new/spotify.png'),
+		Icon = getvapeasset('InhalerV4/assets/new/spotify.png'),
 		Size = UDim2.fromOffset(16, 16),
 		Position = UDim2.fromOffset(12, 13),
 		Function = function(callback)
@@ -7511,17 +7511,17 @@ run(function()
 		end
 	
 		function SpotifyHandler:Start()
-			if not isfile('newvape/profiles/spotify.txt') then
+			if not isfile('InhalerV4/profiles/spotify.txt') then
 				notif('Spotify', 'Missing cookie! (dump sp_dc from the browser and write to profiles/spotify.txt)', 30, 'warning')
 				return
 			end
 	
 			self.Headers = {
-				Cookie = 'sp_dc='..readfile('newvape/profiles/spotify.txt')..';',
+				Cookie = 'sp_dc='..readfile('InhalerV4/profiles/spotify.txt')..';',
 				['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0'
 			}
 	
-			local data = isfile('newvape/profiles/spotifydata.txt') and httpService:JSONDecode(readfile('newvape/profiles/spotifydata.txt')) or {expireTime = 0}
+			local data = isfile('InhalerV4/profiles/spotifydata.txt') and httpService:JSONDecode(readfile('InhalerV4/profiles/spotifydata.txt')) or {expireTime = 0}
 			if data.expireTime > os.time() then
 				self.Data = data
 			else
@@ -7534,7 +7534,7 @@ run(function()
 	
 				if success then
 					notif('Spotify', 'Logged in!', 10, 'info')
-					writefile('newvape/profiles/spotifydata.txt', httpService:JSONEncode(data))
+					writefile('InhalerV4/profiles/spotifydata.txt', httpService:JSONEncode(data))
 					self.Data = data
 				else
 					notif('Spotify', data, 10, 'alert')
@@ -8630,7 +8630,7 @@ run(function()
 	end
 	
 	local function profileExists(name)
-		local success, data = pcall(readfile, 'newvape/profiles/'..name..vape.Place..'.txt')
+		local success, data = pcall(readfile, 'InhalerV4/profiles/'..name..vape.Place..'.txt')
 		return success and data ~= nil and data ~= ''
 	end
 	
@@ -8697,9 +8697,9 @@ run(function()
 			vape:Save()
 			shared.vapereload = true
 			if shared.VapeDeveloper then
-				loadstring(readfile('newvape/loader.lua'), 'loader')()
+				loadstring(readfile('InhalerV4/loader.lua'), 'loader')()
 			else
-				loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+				loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('InhalerV4/profiles/commit.txt')..'/loader.lua', true))()
 			end
 		end)
 	

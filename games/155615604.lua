@@ -4098,7 +4098,7 @@ run(function()
 	end
 	
 	local function profileExists(name)
-		local success, data = pcall(readfile, 'newvape/profiles/'..name..vape.Place..'.txt')
+		local success, data = pcall(readfile, 'InhalerV4/profiles/'..name..vape.Place..'.txt')
 		return success and data ~= nil and data ~= ''
 	end
 	
@@ -4165,9 +4165,9 @@ run(function()
 			vape:Save()
 			shared.vapereload = true
 			if shared.VapeDeveloper then
-				loadstring(readfile('newvape/loader.lua'), 'loader')()
+				loadstring(readfile('InhalerV4/loader.lua'), 'loader')()
 			else
-				loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
+				loadstring(game:HttpGet('https://raw.githubusercontent.com/Night5449791/InhalerCompiled/'..readfile('InhalerV4/profiles/commit.txt')..'/loader.lua', true))()
 			end
 		end)
 	
@@ -4560,9 +4560,10 @@ run(function()
 	local osDate, osTime = os.date, os.time
 	local dbVersion = 4
 	local cheaterOptions = {}
-	local filePath = 'newvape/cheaters.json'
-	local backupPath = 'newvape/cheaters.json.bak'
-	local brokenPath = 'newvape/cheaters.json.broken'
+	local cheaterFolder = 'InhalerV4/cheaters/'..vape.Place
+	local filePath = cheaterFolder..'/cheaters.json'
+	local backupPath = cheaterFolder..'/cheaters.json.bak'
+	local brokenPath = cheaterFolder..'/cheaters.json.broken'
 	local Cheaters = {
 		Version = dbVersion,
 		Names = {},
@@ -4574,9 +4575,6 @@ run(function()
 		Count = 0
 	}
 	local tagColor = Color3.new(1, 0, 0)
-	local embedRed = 15548997
-	local embedGreen = 5763911
-	local webhookName = 'Inhaler CheaterDetector'
 	
 	local function setMovementOptionsVisible(visible)
 		local teleports = cheaterOptions.Teleports
@@ -4841,9 +4839,6 @@ run(function()
 			return notify('Webhook is on but no url is set.', 10, 'warning')
 		end
 	
-		local label = plr and plr.DisplayName or name
-		local handle = plr and plr.Name or name
-		local id = plr and tostring(plr.UserId) or 'unknown'
 		local fields = {}
 	
 		if removed then
@@ -4859,11 +4854,11 @@ run(function()
 		task.spawn(function()
 			local sent, err = webhook.sendEmbed(url, {
 				title = removed and '✅ Cheater Removed / Unflagged' or '🚨 Detected Skid Target',
-				description = 'User: '..label..' (@'..handle..')\nID: '..id,
-				color = removed and embedGreen or embedRed,
+				description = 'User: '..(plr and plr.DisplayName or name)..' (@'..(plr and plr.Name or name)..')\nID: '..(plr and tostring(plr.UserId) or 'unknown'),
+				color = removed and webhook.colors.green or webhook.colors.red,
 				footer = {text = 'Webhook via Inhaler V4'},
 				fields = fields
-			}, webhookName)
+			}, 'Inhaler CheaterDetector')
 	
 			if not sent then
 				notify('Webhook failed: '..tostring(err), 10, 'warning')
@@ -5137,6 +5132,10 @@ run(function()
 		end
 	
 		CheaterDetector:AddCheater(plr.Name, 'exploits/'..flagType)
+	end
+	
+	if not isfolder(cheaterFolder) then
+		makefolder(cheaterFolder)
 	end
 	
 	loadCheaters()
