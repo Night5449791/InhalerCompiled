@@ -421,7 +421,7 @@ run(function()
 		rejoining = true
 	
 		task.spawn(function()
-			task.wait(2.5)
+			task.wait(1)
 	
 			pcall(function()
 				lplr:Kick('Inhaler: Anti Votekick is working')
