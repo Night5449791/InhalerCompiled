@@ -5362,9 +5362,9 @@ run(function()
 		__mode = 'k'
 	})
 	local CYAN = BrickColor.new('Cyan')
-	local driveVelocity = Vector3.new(24, 0, 0)
-	local normalVelocity = Vector3.new(10000, 10000, 0)
-	local normalOffset = CFrame.new(-2, 0, -12)
+	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
+	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
+	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
 	
 	local seatsDirty = false
 	
@@ -5437,7 +5437,9 @@ run(function()
 			tempList[seat] = nil
 		end
 	
-		if not entitylib.isAlive then return end
+		if not entitylib.isAlive then
+			return
+		end
 	
 		if candidateTime ~= now then
 			candidateTime = now
@@ -5463,7 +5465,9 @@ run(function()
 		end
 	
 		local target = candidateList[1]
-		if not target then return end
+		if not target then
+			return
+		end
 	
 		table.remove(candidateList, 1)
 		lastFling[target.Player.Name] = now
@@ -5480,40 +5484,40 @@ run(function()
 		end
 	end
 	
+	-- the chunk env is not always the executor env, these live on the real global table
 	local function executorShim(name)
-		local env = (getgenv and getgenv()) or _G
-		return env[name] or _G[name]
+		local env = getgenv and getgenv()
+		return (env and env[name]) or _G[name]
 	end
-	
-	local isNetworkOwner = executorShim('isnetworkowner')
-	local sethiddenProperty = executorShim('sethiddenproperty')
-	local setSimulationRadius = executorShim('setsimulationradius')
-	local setFflag = executorShim('setfflag')
-	local instanceHandle = executorShim('InstanceHandle')
 	
 	local function setMaxSimRadius()
-		if typeof(sethiddenProperty) == 'function' then
-			pcall(sethiddenProperty, lplr, 'SimulationRadius', 1e9)
-			pcall(sethiddenProperty, lplr, 'MaximumSimulationRadius', 1e9)
+		local sethidden = executorShim('sethiddenproperty')
+		local setsim = executorShim('setsimulationradius')
+		local setflag = executorShim('setfflag')
+	
+		if typeof(sethidden) == 'function' then
+			pcall(sethidden, lplr, 'SimulationRadius', 1e9)
+			pcall(sethidden, lplr, 'MaximumSimulationRadius', 1e9)
 		end
 	
-		if typeof(setSimulationRadius) == 'function' then
-			pcall(setSimulationRadius, 1e9)
+		if typeof(setsim) == 'function' then
+			pcall(setsim, 1e9)
 		end
 	
-		if typeof(setFflag) == 'function' then
-			pcall(setFflag, 'MinClientSimulationRadius', '1e9')
-			pcall(setFflag, 'MaxClientSimulationRadius', '1e9')
-			pcall(setFflag, 'MinimalSimRadiusBuffer', '1e9')
+		if typeof(setflag) == 'function' then
+			pcall(setflag, 'MinClientSimulationRadius', '1e9')
+			pcall(setflag, 'MaxClientSimulationRadius', '1e9')
+			pcall(setflag, 'MinimalSimRadiusBuffer', '1e9')
 		end
 	end
 	
+	-- isnetworkowner only reports ownership inside the simulation radius, so
+	-- setMaxSimRadius has to run first
 	local function isNetworkOwned(part)
-		if typeof(isNetworkOwner) ~= 'function' then
-			return true
-		end
+		local isnetowner = (getgenv and getgenv().isnetworkowner) or _G.isnetworkowner or isnetworkowner
+		if typeof(isnetowner) ~= 'function' then return true end
 	
-		local success, owned = pcall(isNetworkOwner, part)
+		local success, owned = pcall(isnetowner, part)
 		return success and owned
 	end
 	
@@ -5538,6 +5542,8 @@ run(function()
 		Function = function(callback)
 			if callback then
 				local dir = 0
+				-- the anti fling module lives in the same category, but it is looked up
+				-- the way the panel looks modules up: it may not be there yet
 				local antiFling = vape.Modules and vape.Modules.AntiFling
 	
 				if antiFling and not antiFling.Enabled then
@@ -5585,8 +5591,11 @@ run(function()
 						return
 					end
 	
-					if not entitylib.isAlive then return end
+					if not entitylib.isAlive then
+						return
+					end
 	
+					-- nothing left to fling, every listed target is gone
 					if Mode.Value == 'Individual' and not next(List.List) then
 						notif('FlingExploit', 'No targets left, disabling.', 5)
 						FlingExploit:Toggle()
@@ -5619,10 +5628,11 @@ run(function()
 	
 					if Movement.Enabled then
 						root.CFrame = CFrame.new(610 + dir, 98, 2494)
-						root.AssemblyLinearVelocity = driveVelocity
+						root.AssemblyLinearVelocity = DRIVE_VELOCITY
 					end
 	
 					local owned, flung, flungHumanoid
+					setMaxSimRadius()
 	
 					for _, seat in seats do
 						if not isNetworkOwned(seat) then continue end
@@ -5632,7 +5642,9 @@ run(function()
 						local target = getTarget(seat, now)
 						if not target then continue end
 	
-						if target.Player.Parent ~= playersService then
+						-- the target can leave between being picked and the fling landing, and
+						-- a cached entity can outlive the player, so presence is checked here
+						if not playersService:FindFirstChild(target.Player.Name) then
 							tempList[seat] = nil
 							continue
 						end
@@ -5640,13 +5652,21 @@ run(function()
 						flung = true
 						flungHumanoid = target.Humanoid
 	
-						seat.AssemblyLinearVelocity = normalVelocity
-						seat.CFrame = CFrame.new(target.RootPart.Position) * normalOffset
+						-- flings the target's body part: seat velocity + cframe go first,
+						-- then the root part is handed over as the seat's physics rep
+						seat.AssemblyLinearVelocity = NORMAL_VELOCITY
+						seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
 						target.RootPart.AssemblyLinearVelocity = Vector3.zero
 	
-						if typeof(sethiddenProperty) == 'function' and typeof(instanceHandle) == 'table' and typeof(instanceHandle.new) == 'function' then
-							pcall(sethiddenProperty, seat, 'PhysicsRepRootPart', target.RootPart)
-							pcall(sethiddenProperty, seat, 'PhysicsRepRootRef', instanceHandle.new(target.RootPart))
+						-- the physics rep swap needs the executor globals. some executors
+						-- only expose them through getgenv, and a missing one must not take
+						-- the whole loop down: the fling still lands without the swap
+						local sethidden = executorShim('sethiddenproperty')
+						local instanceHandle = executorShim('InstanceHandle')
+	
+						if typeof(sethidden) == 'function' and typeof(instanceHandle) == 'table' and typeof(instanceHandle.new) == 'function' then
+							pcall(sethidden, seat, 'PhysicsRepRootPart', target.RootPart)
+							pcall(sethidden, seat, 'PhysicsRepRootRef', instanceHandle.new(target.RootPart))
 						end
 	
 						local wheels = seat.Parent.Parent:FindFirstChild('Wheels')
