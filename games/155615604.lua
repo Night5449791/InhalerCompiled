@@ -4252,7 +4252,7 @@ run(function()
 	
 	local function loadKX()
 		local success, err = pcall(function()
-			loadstring(game:HttpGet("https://raw.githubusercontent.com/Keraunius/213sadd23/refs/heads/main/kxadm.lua"))()
+			loadstring(game:HttpGet('https://raw.githubusercontent.com/Keraunius/213sadd23/refs/heads/main/kxadm.lua'))()
 		end)
 	
 		if not success then
@@ -5434,10 +5434,10 @@ run(function()
 	local tempList = setmetatable({}, {
 		__mode = 'k'
 	})
-	local CYAN = BrickColor.new('Cyan')
-	local DRIVE_VELOCITY = Vector3.new(24, 0, 0)
-	local NORMAL_VELOCITY = Vector3.new(10000, 10000, 0)
-	local NORMAL_OFFSET = CFrame.new(-2, 0, -12)
+	local cyan = BrickColor.new('Cyan')
+	local driveVelocity = Vector3.new(24, 0, 0)
+	local normalVelocity = Vector3.new(10000, 10000, 0)
+	local normalOffset = CFrame.new(-2, 0, -12)
 	
 	local seatsDirty = false
 	
@@ -5557,7 +5557,6 @@ run(function()
 		end
 	end
 	
-	-- the chunk env is not always the executor env, these live on the real global table
 	local function executorShim(name)
 		local env = getgenv and getgenv()
 		return (env and env[name]) or _G[name]
@@ -5615,8 +5614,6 @@ run(function()
 		Function = function(callback)
 			if callback then
 				local dir = 0
-				-- the anti fling module lives in the same category, but it is looked up
-				-- the way the panel looks modules up: it may not be there yet
 				local antiFling = vape.Modules and vape.Modules.AntiFling
 	
 				if antiFling and not antiFling.Enabled then
@@ -5668,7 +5665,6 @@ run(function()
 						return
 					end
 	
-					-- nothing left to fling, every listed target is gone
 					if Mode.Value == 'Individual' and not next(List.List) then
 						notif('FlingExploit', 'No targets left, disabling.', 5)
 						FlingExploit:Toggle()
@@ -5689,7 +5685,7 @@ run(function()
 							task.spawn(interact, spawner)
 						end
 	
-						if mag < 50 and spawner.BrickColor == CYAN and not didMove then
+						if mag < 50 and spawner.BrickColor == cyan and not didMove then
 							dir = math.clamp(dir + (math.clamp(offset.X, -1, 1) * dt * 24), -12, 14)
 							didMove = true
 						end
@@ -5701,7 +5697,7 @@ run(function()
 	
 					if Movement.Enabled then
 						root.CFrame = CFrame.new(610 + dir, 98, 2494)
-						root.AssemblyLinearVelocity = DRIVE_VELOCITY
+						root.AssemblyLinearVelocity = driveVelocity
 					end
 	
 					local owned, flung, flungHumanoid
@@ -5715,8 +5711,6 @@ run(function()
 						local target = getTarget(seat, now)
 						if not target then continue end
 	
-						-- the target can leave between being picked and the fling landing, and
-						-- a cached entity can outlive the player, so presence is checked here
 						if not playersService:FindFirstChild(target.Player.Name) then
 							tempList[seat] = nil
 							continue
@@ -5725,15 +5719,10 @@ run(function()
 						flung = true
 						flungHumanoid = target.Humanoid
 	
-						-- flings the target's body part: seat velocity + cframe go first,
-						-- then the root part is handed over as the seat's physics rep
-						seat.AssemblyLinearVelocity = NORMAL_VELOCITY
-						seat.CFrame = CFrame.new(target.RootPart.Position) * NORMAL_OFFSET
+						seat.AssemblyLinearVelocity = normalVelocity
+						seat.CFrame = CFrame.new(target.RootPart.Position) * normalOffset
 						target.RootPart.AssemblyLinearVelocity = Vector3.zero
 	
-						-- the physics rep swap needs the executor globals. some executors
-						-- only expose them through getgenv, and a missing one must not take
-						-- the whole loop down: the fling still lands without the swap
 						local sethidden = executorShim('sethiddenproperty')
 						local instanceHandle = executorShim('InstanceHandle')
 	
