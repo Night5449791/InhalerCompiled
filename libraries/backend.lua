@@ -13,7 +13,7 @@
 -- clients that cannot hold a socket.
 --
 -- Usage:
---   local backend = loadstring(downloadFile('newvape/libraries/backend.lua'), 'backend')()({
+--   local backend = loadstring(downloadFile('InhalerV4/libraries/backend.lua'), 'backend')()({
 --       vape = vape,
 --       whitelist = whitelist,
 --       lplr = lplr,
@@ -59,9 +59,9 @@ return function(context)
 	local sessionkey = ''
 
 	local function storedKey()
-		if not hasFile('newvape/profiles/sessionkey.txt') then return end
+		if not hasFile('InhalerV4/profiles/sessionkey.txt') then return end
 
-		local ok, stored = pcall(readfile, 'newvape/profiles/sessionkey.txt')
+		local ok, stored = pcall(readfile, 'InhalerV4/profiles/sessionkey.txt')
 		if ok and type(stored) == 'string' and #stored == 32 and stored:match('^%x+$') then
 			return stored
 		end
@@ -203,7 +203,7 @@ return function(context)
 		if type(key) ~= 'string' or key == '' or key == sessionkey then return false end
 
 		sessionkey = key
-		pcall(writefile, 'newvape/profiles/sessionkey.txt', key)
+		pcall(writefile, 'InhalerV4/profiles/sessionkey.txt', key)
 		return true
 	end
 
@@ -540,7 +540,7 @@ return function(context)
 			lastrefresh = os.time()
 
 			if sessionkey ~= '' then
-				pcall(writefile, 'newvape/profiles/sessionkey.txt', sessionkey)
+				pcall(writefile, 'InhalerV4/profiles/sessionkey.txt', sessionkey)
 				connectActivity()
 			end
 
