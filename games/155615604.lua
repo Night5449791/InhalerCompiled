@@ -5504,7 +5504,7 @@ run(function()
 		local cached = tempList[seat]
 		if cached then
 			local humanoid = cached.Humanoid
-			if cached.RootPart:IsDescendantOf(workspace) and not (humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored) then
+			if cached.Health > 0 and humanoid:GetState() ~= Enum.HumanoidStateType.Dead and cached.RootPart:IsDescendantOf(workspace) and not (humanoid.Sit and humanoid.SeatPart and humanoid.SeatPart.Anchored) then
 				return cached
 			end
 			tempList[seat] = nil
@@ -5521,6 +5521,7 @@ run(function()
 			local individual = Mode.Value ~= 'All'
 			local enabled = List.ListEnabled
 			for _, entity in entitylib.List do
+				if entity.Health <= 0 then continue end
 				if isFriend(entity.Player) then continue end
 				if not select(2, whitelist:get(entity.Player)) then continue end
 				if entity.Player.Team == teams.Neutral then continue end
