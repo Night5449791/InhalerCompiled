@@ -3424,9 +3424,11 @@ end)
 run(function()
 	local AutoTeam
 	local AutoOnDied
+	local RespawnCooldown
+	local lastSpawnTime
 	
 	local function joinTeam(targetName)
-		local deadline = targetName and os.clock() + 5 or nil
+		local deadline = targetName and os.clock() + RespawnCooldown.Value + 1 or nil
 		while AutoTeam.Enabled and (not lplr.Team or lplr.Team == teams.Neutral) and (not deadline or os.clock() < deadline) do
 			local teamGui = lplr.PlayerGui:FindFirstChild('TeamsFrame', true)
 	
@@ -3474,7 +3476,7 @@ run(function()
 	
 		firesignal(switch.MouseButton1Click)
 	
-		local deadline = os.clock() + 3
+		local deadline = os.clock() + RespawnCooldown.Value
 		while os.clock() < deadline do
 			if not lplr.Team or lplr.Team == teams.Neutral then return true end
 			task.wait(0.1)
@@ -3487,11 +3489,18 @@ run(function()
 		Name = 'AutoTeam',
 		Function = function(callback)
 			if callback then
-				AutoTeam:Clean(lplr.CharacterAdded:Connect(function()
+				AutoTeam:Clean(lplr.CharacterAdded:Connect(function(char)
 					if not AutoTeam.Enabled or not AutoOnDied.Enabled then return end
 	
-					task.wait(0.5)
+					task.wait(RespawnCooldown.Value)
 					if not AutoTeam.Enabled then return end
+	
+					local humanoid = char and char:FindFirstChildOfClass('Humanoid')
+					if not humanoid or humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead then return end
+	
+					local spawnTime = char:GetAttribute('SpawnTime')
+					if not spawnTime or spawnTime == lastSpawnTime then return end
+					lastSpawnTime = spawnTime
 	
 					local current = lplr.Team and lplr.Team.Name or nil
 					if current and not leaveTeam() then return end
@@ -3509,6 +3518,15 @@ run(function()
 		Name = 'OnDied',
 		Default = false,
 		Tooltip = 'Re-pick a team when you respawn'
+	})
+	RespawnCooldown = AutoTeam:CreateSlider({
+		Name = 'Respawn Cooldown',
+		Min = 1,
+		Max = 15,
+		Default = 5,
+		Decimal = 10,
+		Suffix = 's',
+		Tooltip = 'Server respawn delay before re-picking a team'
 	})
 	
 end)
