@@ -2326,9 +2326,9 @@ run(function()
 	
 		Reference[c4] = cham
 	
-		c4.Destroying:Connect(function()
+		C4ESP:Clean(c4.Destroying:Connect(function()
 			Removed(c4)
-		end)
+		end))
 	end
 	
 	C4ESP = vape.Categories.Render:CreateModule({
@@ -2659,7 +2659,7 @@ run(function()
 	local setSimulationRadius
 	local setFflag
 	local dir = 0
-	local CYAN = BrickColor.new('Cyan')
+	local cyan = BrickColor.new('Cyan')
 	local driveVelocity = Vector3.new(24, 0, 0)
 	
 	local function interact(spawner)
@@ -2798,7 +2798,7 @@ run(function()
 			local offset = spawner.Position - rootPos
 			local mag = offset.Magnitude
 	
-			if mag < 50 and spawner.BrickColor == CYAN and not didMove then
+			if mag < 50 and spawner.BrickColor == cyan and not didMove then
 				dir = math.clamp(dir + (math.clamp(offset.X, -1, 1) * dt * 24), -12, 14)
 				didMove = true
 			end
@@ -4321,11 +4321,11 @@ run(function()
 	local toggles = {
 		{Name = 'ShareCommands', Default = false, Tooltip = 'Allows whitelisted users to directly access chat commands.'},
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
-		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
-			if not enabled then stopFollow() end
+		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(callback)
+			if not callback then stopFollow() end
 		end},
-		{Name = 'PlayerView', Tooltip = '.view <plr>\n.unview', Function = function(enabled)
-			if not enabled then restoreCamera() end
+		{Name = 'PlayerView', Tooltip = '.view <plr>\n.unview', Function = function(callback)
+			if not callback then restoreCamera() end
 		end},
 		{Name = 'Rejoin', Tooltip = '.rj\n.rejoin'},
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
@@ -4388,40 +4388,40 @@ run(function()
 	ChatCommand = vape.Categories.Utility:CreateModule({
 		Name = 'ChatCommand',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				ChatCommand:Clean(restoreCamera)
+				ChatCommand:Clean(stopFollow)
+				ChatCommand:Clean(playersService.PlayerRemoving:Connect(function(plr)
+					untrackPlayer(plr)
 	
-			ChatCommand:Clean(restoreCamera)
-			ChatCommand:Clean(stopFollow)
-			ChatCommand:Clean(playersService.PlayerRemoving:Connect(function(plr)
-				untrackPlayer(plr)
+					if plr == viewPlayer then
+						restoreCamera()
+					end
 	
-				if plr == viewPlayer then
-					restoreCamera()
+					if plr == followPlayer then
+						stopFollow()
+					end
+				end))
+				ChatCommand:Clean(entitylib.Events.EntityAdded:Connect(function(entity)
+					if entity.Player and entity.Player == viewPlayer then
+						gameCamera.CameraSubject = entity.Humanoid
+					end
+				end))
+	
+				for _, plr in playersService:GetPlayers() do
+					trackPlayer(plr)
 				end
 	
-				if plr == followPlayer then
-					stopFollow()
-				end
-			end))
-			ChatCommand:Clean(entitylib.Events.EntityAdded:Connect(function(entity)
-				if entity.Player and entity.Player == viewPlayer then
-					gameCamera.CameraSubject = entity.Humanoid
-				end
-			end))
+				ChatCommand:Clean(playersService.PlayerAdded:Connect(trackPlayer))
+				ChatCommand:Clean(function()
+					for _, connection in sharedConnections do
+						connection:Disconnect()
+					end
 	
-			for _, plr in playersService:GetPlayers() do
-				trackPlayer(plr)
+					table.clear(sharedConnections)
+				end)
+				ChatCommand:Clean(lplr.Chatted:Connect(onChatted))
 			end
-	
-			ChatCommand:Clean(playersService.PlayerAdded:Connect(trackPlayer))
-			ChatCommand:Clean(function()
-				for _, connection in sharedConnections do
-					connection:Disconnect()
-				end
-	
-				table.clear(sharedConnections)
-			end)
-			ChatCommand:Clean(lplr.Chatted:Connect(onChatted))
 		end,
 		Tooltip = 'Chat commands, every command is a toggleable option'
 	})
@@ -5248,8 +5248,8 @@ run(function()
 	cheaterOptions.AutomaticAdd = CheaterDetector:CreateToggle({
 		Name = 'Automatic Add',
 		Default = false,
-		Function = function(enabled)
-			setMovementOptionsVisible(enabled)
+		Function = function(callback)
+			setMovementOptionsVisible(callback)
 		end,
 		Tooltip = 'Adds a player to the cheater list when CheatDetector flags an invalid humanoid state or an invalid animation; the two options below add the movement flags as well.\nThe reason is logged as exploits/<flag>.'
 	})

@@ -304,28 +304,28 @@ run(function()
 		Function = function(callback)
 			disconnectAll()
 	
-			if not callback then return end
+			if callback then
+				repeat
+					local tool = redwood.meleeTool()
+					if tool and not connections[tool] then
+						connections[tool] = tool.Activated:Connect(function()
+							if not SilentAim.Enabled then return end
 	
-			repeat
-				local tool = redwood.meleeTool()
-				if tool and not connections[tool] then
-					connections[tool] = tool.Activated:Connect(function()
-						if not SilentAim.Enabled then return end
+							local entity = aimEntity()
+							if not entity then return end
+							if not redwood.attack(entity, Part.Value) then return end
 	
-						local entity = aimEntity()
-						if not entity then return end
-						if not redwood.attack(entity, Part.Value) then return end
+							if ShowTarget.Enabled then
+								targetinfo.Targets[entity] = os.clock() + 1
+							end
+						end)
+					end
 	
-						if ShowTarget.Enabled then
-							targetinfo.Targets[entity] = os.clock() + 1
-						end
-					end)
-				end
+					task.wait(1)
+				until not SilentAim.Enabled or vape.Loaded == nil
 	
-				task.wait(1)
-			until not SilentAim.Enabled or vape.Loaded == nil
-	
-			disconnectAll()
+				disconnectAll()
+			end
 		end,
 		Tooltip = 'Adds a melee hit on the closest target inside the FOV every time you attack'
 	})
@@ -354,33 +354,33 @@ run(function()
 	AutoReset = vape.Categories.Blatant:CreateModule({
 		Name = 'AutoReset',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				local lastReset = 0
 	
-			local lastReset = 0
+				repeat
+					local character = lplr.Character
+					local humanoid = redwood.humanoid(character)
+					local alive = humanoid ~= nil and humanoid.Health > 0
+					local reset = false
 	
-			repeat
-				local character = lplr.Character
-				local humanoid = redwood.humanoid(character)
-				local alive = humanoid ~= nil and humanoid.Health > 0
-				local reset = false
+					if alive and os.clock() - lastReset > 1 then
+						reset = OnArrest.Enabled and redwood.hasState(character, 'ArrestCurrent')
 	
-				if alive and os.clock() - lastReset > 1 then
-					reset = OnArrest.Enabled and redwood.hasState(character, 'ArrestCurrent')
+						if not reset and Distance.Value > 0 then
+							if not OnlyPrisoners.Enabled or redwood.isTeam(lplr, redwood.Teams.Prisoners) or redwood.isTeam(lplr, redwood.Teams.Fugitive) then
+								reset = redwood.nearestPlayer(redwood.Teams.Guards, Distance.Value) ~= nil
+							end
+						end
 	
-					if not reset and Distance.Value > 0 then
-						if not OnlyPrisoners.Enabled or redwood.isTeam(lplr, redwood.Teams.Prisoners) or redwood.isTeam(lplr, redwood.Teams.Fugitive) then
-							reset = redwood.nearestPlayer(redwood.Teams.Guards, Distance.Value) ~= nil
+						if reset then
+							redwood.fire('Reset')
+							lastReset = os.clock()
 						end
 					end
 	
-					if reset then
-						redwood.fire('Reset')
-						lastReset = os.clock()
-					end
-				end
-	
-				task.wait(reset and 0.5 or 0.1)
-			until not AutoReset.Enabled or vape.Loaded == nil
+					task.wait(reset and 0.5 or 0.1)
+				until not AutoReset.Enabled or vape.Loaded == nil
+			end
 		end,
 		Tooltip = 'Resets your character before a guard can arrest you'
 	})
@@ -434,25 +434,25 @@ run(function()
 	Killaura = vape.Categories.Blatant:CreateModule({
 		Name = 'Killaura',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				local swingAt = 0
 	
-			local swingAt = 0
+				repeat
+					local tool = redwood.meleeTool()
+					local character = lplr.Character
+					local root = character and character:FindFirstChild('HumanoidRootPart')
 	
-			repeat
-				local tool = redwood.meleeTool()
-				local character = lplr.Character
-				local root = character and character:FindFirstChild('HumanoidRootPart')
-	
-				if tool and root and os.clock() >= swingAt then
-					local target = closestTarget(root, Range.Value, TeamCheck.Enabled)
-					if target then
-						redwood.attack(target, Part.Value)
-						swingAt = os.clock() + Delay.Value
+					if tool and root and os.clock() >= swingAt then
+						local target = closestTarget(root, Range.Value, TeamCheck.Enabled)
+						if target then
+							redwood.attack(target, Part.Value)
+							swingAt = os.clock() + Delay.Value
+						end
 					end
-				end
 	
-				task.wait(0.05)
-			until not Killaura.Enabled or vape.Loaded == nil
+					task.wait(0.05)
+				until not Killaura.Enabled or vape.Loaded == nil
+			end
 		end,
 		Tooltip = 'Hits everyone in range with your equipped melee weapon'
 	})
@@ -532,54 +532,54 @@ run(function()
 		Function = function(callback)
 			clearHighlights()
 	
-			if not callback then return end
+			if callback then
+				local removed = workspace.ChildRemoved:Connect(function(child)
+					removeHighlight(child)
+				end)
 	
-			local removed = workspace.ChildRemoved:Connect(function(child)
-				removeHighlight(child)
-			end)
+				repeat
+					for _, plr in playersService:GetPlayers() do
+						local character = plr.Character
+						if character and character ~= lplr.Character then
+							local humanoid = redwood.humanoid(character)
+							local alive = humanoid and humanoid.Health > 0
+							local cuffed = alive and redwood.hasState(character, 'Handcuffed_')
+							local highlight = highlights[character]
 	
-			repeat
-				for _, plr in playersService:GetPlayers() do
-					local character = plr.Character
-					if character and character ~= lplr.Character then
-						local humanoid = redwood.humanoid(character)
-						local alive = humanoid and humanoid.Health > 0
-						local cuffed = alive and redwood.hasState(character, 'Handcuffed_')
-						local highlight = highlights[character]
-	
-						if cuffed and not highlight then
-							highlight = Instance.new('Highlight')
-							local color = highlightColor(character)
-							highlight.FillColor = color
-							highlight.FillTransparency = 0.65
-							highlight.OutlineColor = color
-							highlight.OutlineTransparency = 0
-							highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-							highlight.Adornee = character
-							highlight.Parent = character
-							highlights[character] = highlight
-						elseif not cuffed and highlight then
-							removeHighlight(character)
-						elseif highlight then
-							local color = highlightColor(character)
-							highlight.FillColor = color
-							highlight.OutlineColor = color
+							if cuffed and not highlight then
+								highlight = Instance.new('Highlight')
+								local color = highlightColor(character)
+								highlight.FillColor = color
+								highlight.FillTransparency = 0.65
+								highlight.OutlineColor = color
+								highlight.OutlineTransparency = 0
+								highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+								highlight.Adornee = character
+								highlight.Parent = character
+								highlights[character] = highlight
+							elseif not cuffed and highlight then
+								removeHighlight(character)
+							elseif highlight then
+								local color = highlightColor(character)
+								highlight.FillColor = color
+								highlight.OutlineColor = color
+							end
 						end
 					end
-				end
 	
-				for character in highlights do
-					local plr = playersService:GetPlayerFromCharacter(character)
-					if not plr or plr.Character ~= character then
-						removeHighlight(character)
+					for character in highlights do
+						local plr = playersService:GetPlayerFromCharacter(character)
+						if not plr or plr.Character ~= character then
+							removeHighlight(character)
+						end
 					end
-				end
 	
-				task.wait(0.5)
-			until not CuffedESP.Enabled or vape.Loaded == nil
+					task.wait(0.5)
+				until not CuffedESP.Enabled or vape.Loaded == nil
 	
-			removed:Disconnect()
-			clearHighlights()
+				removed:Disconnect()
+				clearHighlights()
+			end
 		end,
 		Tooltip = 'Highlights players that are already handcuffed'
 	})
@@ -629,15 +629,15 @@ run(function()
 	AutoJoinTeam = vape.Categories.Utility:CreateModule({
 		Name = 'AutoJoinTeam',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				repeat
+					if redwood.team(lplr) ~= Team.Value then
+						joinTeam(Team.Value)
+					end
 	
-			repeat
-				if redwood.team(lplr) ~= Team.Value then
-					joinTeam(Team.Value)
-				end
-	
-				task.wait(Retry.Value)
-			until not AutoJoinTeam.Enabled or vape.Loaded == nil
+					task.wait(Retry.Value)
+				until not AutoJoinTeam.Enabled or vape.Loaded == nil
+			end
 		end,
 		Tooltip = 'Joins the selected team through the game team changer'
 	})

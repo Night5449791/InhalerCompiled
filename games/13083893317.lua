@@ -271,36 +271,36 @@ run(function()
 	AutoArrest = vape.Categories.Blatant:CreateModule({
 		Name = 'AutoArrest',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				repeat
+					local root = sentence.root(lplr)
 	
-			repeat
-				local root = sentence.root(lplr)
+					if root and sentence.isCop(lplr) then
+						local range = ArrestRange.Value
+						local origin = root.Position
 	
-				if root and sentence.isCop(lplr) then
-					local range = ArrestRange.Value
-					local origin = root.Position
+						for _, plr in playersService:GetPlayers() do
+							if plr == lplr or not sentence.isDowned(plr) or not sentence.isTarget(plr) then continue end
 	
-					for _, plr in playersService:GetPlayers() do
-						if plr == lplr or not sentence.isDowned(plr) or not sentence.isTarget(plr) then continue end
+							local other = sentence.root(plr)
+							if not other or (other.Position - origin).Magnitude > range then continue end
 	
-						local other = sentence.root(plr)
-						if not other or (other.Position - origin).Magnitude > range then continue end
+							local prompt = other:FindFirstChild('ArrestPrompt')
+							if not prompt then continue end
 	
-						local prompt = other:FindFirstChild('ArrestPrompt')
-						if not prompt then continue end
-	
-						prompt.MaxActivationDistance = range
-						prompt.HoldDuration = 0
-						pcall(prompt.InputHoldBegin, prompt)
-						task.wait()
-						pcall(prompt.InputHoldEnd, prompt)
-						task.wait(ArrestDelay.Value)
-						break
+							prompt.MaxActivationDistance = range
+							prompt.HoldDuration = 0
+							pcall(prompt.InputHoldBegin, prompt)
+							task.wait()
+							pcall(prompt.InputHoldEnd, prompt)
+							task.wait(ArrestDelay.Value)
+							break
+						end
 					end
-				end
 	
-				task.wait(0.2)
-			until not AutoArrest.Enabled or vape.Loaded == nil
+					task.wait(0.2)
+				until not AutoArrest.Enabled or vape.Loaded == nil
+			end
 		end,
 		Tooltip = 'Arrests downed enemies in range through their own arrest prompt'
 	})
@@ -336,27 +336,27 @@ run(function()
 	AutoReset = vape.Categories.Blatant:CreateModule({
 		Name = 'AutoReset',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				guards = sentence.Teams.Guards
 	
-			guards = sentence.Teams.Guards
+				repeat
+					local reset = ResetWhileDowned.Enabled and sentence.status(lplr, 'Downed') == true
 	
-			repeat
-				local reset = ResetWhileDowned.Enabled and sentence.status(lplr, 'Downed') == true
-	
-				if not reset then
-					local distance = ResetDistance.Value
-					if distance > 0 then
-						reset = sentence.nearestPlayer(guards, distance) ~= nil
+					if not reset then
+						local distance = ResetDistance.Value
+						if distance > 0 then
+							reset = sentence.nearestPlayer(guards, distance) ~= nil
+						end
 					end
-				end
 	
-				if reset then
-					sentence.fire('WeaponEvent', 'Reset')
-					task.wait(0.5)
-				else
-					task.wait(0.1)
-				end
-			until not AutoReset.Enabled or vape.Loaded == nil
+					if reset then
+						sentence.fire('WeaponEvent', 'Reset')
+						task.wait(0.5)
+					else
+						task.wait(0.1)
+					end
+				until not AutoReset.Enabled or vape.Loaded == nil
+			end
 		end,
 		Tooltip = 'Resets your character before a guard can arrest you'
 	})
@@ -386,30 +386,30 @@ run(function()
 	AutoStomp = vape.Categories.Blatant:CreateModule({
 		Name = 'AutoStomp',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				repeat
+					local root = sentence.root(lplr)
 	
-			repeat
-				local root = sentence.root(lplr)
+					if root then
+						local range = StompRange.Value
+						local teamCheck = StompTeamCheck.Enabled
+						local origin = root.Position
 	
-				if root then
-					local range = StompRange.Value
-					local teamCheck = StompTeamCheck.Enabled
-					local origin = root.Position
+						for _, plr in playersService:GetPlayers() do
+							if plr == lplr or not sentence.isDowned(plr) then continue end
+							if teamCheck and not sentence.isTarget(plr) then continue end
 	
-					for _, plr in playersService:GetPlayers() do
-						if plr == lplr or not sentence.isDowned(plr) then continue end
-						if teamCheck and not sentence.isTarget(plr) then continue end
-	
-						local other = sentence.root(plr)
-						if other and (other.Position - origin).Magnitude <= range then
-							sentence.fire('CarryStompEvent', 'EPress')
-							break
+							local other = sentence.root(plr)
+							if other and (other.Position - origin).Magnitude <= range then
+								sentence.fire('CarryStompEvent', 'EPress')
+								break
+							end
 						end
 					end
-				end
 	
-				task.wait(StompDelay.Value)
-			until not AutoStomp.Enabled or vape.Loaded == nil
+					task.wait(StompDelay.Value)
+				until not AutoStomp.Enabled or vape.Loaded == nil
+			end
 		end,
 		Tooltip = 'Presses the stomp key on downed players in range'
 	})
@@ -468,40 +468,40 @@ run(function()
 		Function = function(callback)
 			clearHighlights()
 	
-			if not callback then return end
+			if callback then
+				repeat
+					local localCharacter = lplr.Character
 	
-			repeat
-				local localCharacter = lplr.Character
+					for _, plr in playersService:GetPlayers() do
+						local character = plr.Character
+						local record = highlights[plr]
+						local downed = character ~= nil and character ~= localCharacter and sentence.isDowned(plr)
 	
-				for _, plr in playersService:GetPlayers() do
-					local character = plr.Character
-					local record = highlights[plr]
-					local downed = character ~= nil and character ~= localCharacter and sentence.isDowned(plr)
+						if record and (not downed or record.Character ~= character) then
+							record.Highlight:Destroy()
+							highlights[plr] = nil
+							record = nil
+						end
 	
-					if record and (not downed or record.Character ~= character) then
-						record.Highlight:Destroy()
-						highlights[plr] = nil
-						record = nil
+						if downed and not record then
+							local color = Color3.fromHSV(DownedColor.Hue, DownedColor.Sat, DownedColor.Value)
+							local highlight = Instance.new('Highlight')
+							highlight.FillColor = color
+							highlight.FillTransparency = 0.65
+							highlight.OutlineColor = color
+							highlight.OutlineTransparency = 0
+							highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+							highlight.Adornee = character
+							highlight.Parent = character
+							highlights[plr] = {Character = character, Highlight = highlight}
+						end
 					end
 	
-					if downed and not record then
-						local color = Color3.fromHSV(DownedColor.Hue, DownedColor.Sat, DownedColor.Value)
-						local highlight = Instance.new('Highlight')
-						highlight.FillColor = color
-						highlight.FillTransparency = 0.65
-						highlight.OutlineColor = color
-						highlight.OutlineTransparency = 0
-						highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-						highlight.Adornee = character
-						highlight.Parent = character
-						highlights[plr] = {Character = character, Highlight = highlight}
-					end
-				end
+					task.wait(0.5)
+				until not DownedESP.Enabled or vape.Loaded == nil
 	
-				task.wait(0.5)
-			until not DownedESP.Enabled or vape.Loaded == nil
-	
-			clearHighlights()
+				clearHighlights()
+			end
 		end,
 		Tooltip = 'Highlights players that are downed and can be arrested or stomped'
 	})

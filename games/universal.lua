@@ -167,6 +167,42 @@ local function serverHop(pointer, filter)
 		notif('Inhaler', 'Searching for an available server.', 2)
 	end
 
+	if filter == 'Best Ping' then
+		local best, bestPing, nextPointer = nil, nil, pointer
+
+		for _ = 1, 5 do
+			local success, httpdata = pcall(function()
+				return game:HttpGet('https://games.roblox.com/v1/games/'..game.PlaceId..'/servers/Public?sortOrder=1&excludeFullGames=true&limit=100'..(nextPointer and '&cursor='..nextPointer or ''))
+			end)
+
+			local data = success and httpService:JSONDecode(httpdata) or nil
+			if not data or not data.data then
+				notif('Inhaler', 'Failed to grab servers. ('..(data and data.errors and data.errors[1] and data.errors[1].message or 'no data')..')', 5, 'warning')
+				return
+			end
+
+			for _, v in data.data do
+				local ping = tonumber(v.ping)
+				if ping and (not bestPing or ping < bestPing) and tonumber(v.playing) < playersService.MaxPlayers and not table.find(visited, v.id) and not table.find(attempted, v.id) then
+					best, bestPing = v.id, ping
+				end
+			end
+
+			cacheExpire, cache = os.clock() + 60, httpdata
+			nextPointer = data.nextPageCursor
+			if not nextPointer then break end
+		end
+
+		if best then
+			table.insert(attempted, best)
+			notif('Inhaler', 'Found! Teleporting to a '..bestPing..'ms server.', 5)
+			teleportService:TeleportToPlaceInstance(game.PlaceId, best)
+		else
+			notif('Inhaler', 'Failed to find an available server.', 5, 'warning')
+		end
+		return
+	end
+
 	local success, httpdata = pcall(function()
 		return cacheExpire < os.clock() and game:HttpGet('https://games.roblox.com/v1/games/'..game.PlaceId..'/servers/Public?sortOrder='..(filter == 'Ascending' and 1 or 2)..'&excludeFullGames=true&limit=100'..(pointer and '&cursor='..pointer or '')) or cache
 	end)
@@ -1104,104 +1140,104 @@ run(function()
 				CircleObject.Visible = callback
 			end
 	
-			if not callback then return end
-	
-			local entity
-			local rightClicked = inputService:IsMouseButtonPressed(1)
-			local pressed = false
-			local cameraMode = AimAssistMethod.Value == 'Camera'
-			local touch = inputService.TouchEnabled
-			local clickgui = vape.gui.ScaledGui.ClickGui
-			local mouseScale
-			if not cameraMode then
-				mouseScale = moveConst * UserSettings():GetService('UserGameSettings').MouseSensitivity
-			end
-	
-			local positionMode = Mode.Value == 'Position'
-			local selector = positionMode and entitylib.EntityPosition or entitylib.EntityMouse
-	
-			local function step(dt)
-				if CircleObject then
-					CircleObject.Position = touch and gameCamera.ViewportSize / 2 or inputService:GetMouseLocation()
+			if callback then
+				local entity
+				local rightClicked = inputService:IsMouseButtonPressed(1)
+				local pressed = false
+				local cameraMode = AimAssistMethod.Value == 'Camera'
+				local touch = inputService.TouchEnabled
+				local clickgui = vape.gui.ScaledGui.ClickGui
+				local mouseScale
+				if not cameraMode then
+					mouseScale = moveConst * UserSettings():GetService('UserGameSettings').MouseSensitivity
 				end
 	
-				if clickgui.Visible then return end
-				if not cameraMode and inputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then return end
-				if not cameraMode and RightClick.Enabled and not rightClicked then return end
-				if KeyToggle.Enabled and not pressed then return end
+				local positionMode = Mode.Value == 'Position'
+				local selector = positionMode and entitylib.EntityPosition or entitylib.EntityMouse
 	
-				local camCF = gameCamera.CFrame
-				local origin, partName = camCF.Position, Part.Value
+				local function step(dt)
+					if CircleObject then
+						CircleObject.Position = touch and gameCamera.ViewportSize / 2 or inputService:GetMouseLocation()
+					end
 	
-				entity = selector({
-					Range = FOV.Value,
-					Part = partName,
-					Players = Targets.Players.Enabled,
-					NPCs = Targets.NPCs.Enabled,
-					Wallcheck = Targets.Walls.Enabled,
-					Origin = positionMode and origin or nil
-				})
+					if clickgui.Visible then return end
+					if not cameraMode and inputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then return end
+					if not cameraMode and RightClick.Enabled and not rightClicked then return end
+					if KeyToggle.Enabled and not pressed then return end
 	
-				if not entity then return end
+					local camCF = gameCamera.CFrame
+					local origin, partName = camCF.Position, Part.Value
 	
-				local part = entity[partName]
-				if not part then return end
+					entity = selector({
+						Range = FOV.Value,
+						Part = partName,
+						Players = Targets.Players.Enabled,
+						NPCs = Targets.NPCs.Enabled,
+						Wallcheck = Targets.Walls.Enabled,
+						Origin = positionMode and origin or nil
+					})
 	
-				local target = (part.Position - origin).Unit
-				target = target == target and target or Vector3.zero
+					if not entity then return end
 	
-				if ShowTarget.Enabled then
-					targetinfo.Targets[entity] = os.clock() + 1
-				end
+					local part = entity[partName]
+					if not part then return end
 	
-				if target == Vector3.zero then return end
+					local target = (part.Position - origin).Unit
+					target = target == target and target or Vector3.zero
 	
-				local alpha = math.min(Speed.Value * dt, 1)
+					if ShowTarget.Enabled then
+						targetinfo.Targets[entity] = os.clock() + 1
+					end
 	
-				if cameraMode then
-					local blended = camCF.LookVector:Lerp(target, alpha)
-					local magnitude = blended.Magnitude
-					if magnitude < 0.01 then return end
+					if target == Vector3.zero then return end
 	
-					gameCamera.CFrame = CFrame.lookAt(origin, origin + blended / magnitude)
-				else
-					local facing = camCF.LookVector
-					local diffYaw = wrapAngle(math.atan2(facing.X, facing.Z) - wrapAngle(math.atan2(target.X, target.Z)))
-					local diffPitch = math.asin(facing.Y) - math.asin(target.Y)
-					local angle = Vector2.new(diffYaw, diffPitch) // mouseScale
+					local alpha = math.min(Speed.Value * dt, 1)
 	
-					angle = angle * alpha
+					if cameraMode then
+						local blended = camCF.LookVector:Lerp(target, alpha)
+						local magnitude = blended.Magnitude
+						if magnitude < 0.01 then return end
 	
-					if typeof(mousemoverel) == 'function' then
-						mousemoverel(angle.X, angle.Y)
+						gameCamera.CFrame = CFrame.lookAt(origin, origin + blended / magnitude)
+					else
+						local facing = camCF.LookVector
+						local diffYaw = wrapAngle(math.atan2(facing.X, facing.Z) - wrapAngle(math.atan2(target.X, target.Z)))
+						local diffPitch = math.asin(facing.Y) - math.asin(target.Y)
+						local angle = Vector2.new(diffYaw, diffPitch) // mouseScale
+	
+						angle = angle * alpha
+	
+						if typeof(mousemoverel) == 'function' then
+							mousemoverel(angle.X, angle.Y)
+						end
 					end
 				end
-			end
 	
-			if cameraMode then
-				runService:BindToRenderStep('InhalerAimAssist', Enum.RenderPriority.Camera.Value + 1, step)
-				AimAssist:Clean(function()
-					runService:UnbindFromRenderStep('InhalerAimAssist')
-				end)
-			else
-				AimAssist:Clean(runService.RenderStepped:Connect(step))
-			end
-	
-			AimAssist:Clean(Key.Triggered:Connect(function(isDown)
-				pressed = KeyToggle.Enabled and isDown
-			end))
-	
-			AimAssist:Clean(inputService.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton2 then
-					rightClicked = true
+				if cameraMode then
+					runService:BindToRenderStep('InhalerAimAssist', Enum.RenderPriority.Camera.Value + 1, step)
+					AimAssist:Clean(function()
+						runService:UnbindFromRenderStep('InhalerAimAssist')
+					end)
+				else
+					AimAssist:Clean(runService.RenderStepped:Connect(step))
 				end
-			end))
 	
-			AimAssist:Clean(inputService.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton2 then
-					rightClicked = false
-				end
-			end))
+				AimAssist:Clean(Key.Triggered:Connect(function(isDown)
+					pressed = KeyToggle.Enabled and isDown
+				end))
+	
+				AimAssist:Clean(inputService.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton2 then
+						rightClicked = true
+					end
+				end))
+	
+				AimAssist:Clean(inputService.InputEnded:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton2 then
+						rightClicked = false
+					end
+				end))
+			end
 		end,
 		Tooltip = 'Smoothly aims to closest valid target'
 	})
@@ -2376,34 +2412,34 @@ run(function()
 			enabled = callback
 			generation = generation + 1
 			local currentGeneration = generation
-			if not callback then return end
+			if callback then
+				DiedTP:Clean(entitylib.Events.LocalAdded:Connect(function(entity)
+					if not enabled or currentGeneration ~= generation then return end
+					local char = entity and entity.Character
+					if not char then return end
+					watchDeath(char, currentGeneration)
+					if lastDeath then
+						returnToDeath(char, currentGeneration)
+					end
+				end))
 	
-			DiedTP:Clean(entitylib.Events.LocalAdded:Connect(function(entity)
-				if not enabled or currentGeneration ~= generation then return end
-				local char = entity and entity.Character
-				if not char then return end
-				watchDeath(char, currentGeneration)
-				if lastDeath then
-					returnToDeath(char, currentGeneration)
+				DiedTP:Clean(entitylib.Events.LocalRemoved:Connect(function(entity)
+					if not enabled or currentGeneration ~= generation or lastDeath then return end
+					captureDeath(entity and entity.Character)
+				end))
+	
+				aliveConnection = runService.PreSimulation:Connect(function()
+					local clock = os.clock()
+					if clock - aliveClock < 0.15 then return end
+					aliveClock = clock
+					rememberAlive(lplr.Character)
+				end)
+				DiedTP:Clean(aliveConnection)
+	
+				if entitylib.isAlive and entitylib.character then
+					watchDeath(entitylib.character.Character, currentGeneration)
+					rememberAlive(entitylib.character.Character)
 				end
-			end))
-	
-			DiedTP:Clean(entitylib.Events.LocalRemoved:Connect(function(entity)
-				if not enabled or currentGeneration ~= generation or lastDeath then return end
-				captureDeath(entity and entity.Character)
-			end))
-	
-			aliveConnection = runService.PreSimulation:Connect(function()
-				local clock = os.clock()
-				if clock - aliveClock < 0.15 then return end
-				aliveClock = clock
-				rememberAlive(lplr.Character)
-			end)
-			DiedTP:Clean(aliveConnection)
-	
-			if entitylib.isAlive and entitylib.character then
-				watchDeath(entitylib.character.Character, currentGeneration)
-				rememberAlive(entitylib.character.Character)
 			end
 		end,
 		Tooltip = 'Returns you to your last death position when you respawn.'
@@ -7816,9 +7852,10 @@ run(function()
 	})
 	Sort = AutoRejoin:CreateDropdown({
 		Name = 'Sort',
-		List = {'Descending', 'Ascending'},
-		Tooltip = 'Descending - Prefers full servers\nAscending - Prefers empty servers'
+		List = {'Descending', 'Ascending', 'Best Ping'},
+		Tooltip = 'Descending - Prefers full servers\nAscending - Prefers empty servers\nBest Ping - Prefers the lowest ping server'
 	})
+	
 end)
 
 run(function()
@@ -8438,11 +8475,11 @@ run(function()
 	local toggles = {
 		{Name = 'ShareCommands', Default = false, Tooltip = 'Allows whitelisted users to directly access chat commands.'},
 		{Name = 'PlayerTP', Tooltip = '.tp <plr>'},
-		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(enabled)
-			if not enabled then stopFollow() end
+		{Name = 'PlayerFollow', Tooltip = '.follow <plr>\n.unfollow', Function = function(callback)
+			if not callback then stopFollow() end
 		end},
-		{Name = 'PlayerView', Tooltip = '.view <plr>\n.unview', Function = function(enabled)
-			if not enabled then restoreCamera() end
+		{Name = 'PlayerView', Tooltip = '.view <plr>\n.unview', Function = function(callback)
+			if not callback then restoreCamera() end
 		end},
 		{Name = 'Rejoin', Tooltip = '.rj\n.rejoin'},
 		{Name = 'ServerHop', Tooltip = '.hop\n.serverhop'},
@@ -8500,40 +8537,40 @@ run(function()
 	ChatCommand = vape.Categories.Utility:CreateModule({
 		Name = 'ChatCommand',
 		Function = function(callback)
-			if not callback then return end
+			if callback then
+				ChatCommand:Clean(restoreCamera)
+				ChatCommand:Clean(stopFollow)
+				ChatCommand:Clean(playersService.PlayerRemoving:Connect(function(plr)
+					untrackPlayer(plr)
 	
-			ChatCommand:Clean(restoreCamera)
-			ChatCommand:Clean(stopFollow)
-			ChatCommand:Clean(playersService.PlayerRemoving:Connect(function(plr)
-				untrackPlayer(plr)
+					if plr == viewPlayer then
+						restoreCamera()
+					end
 	
-				if plr == viewPlayer then
-					restoreCamera()
+					if plr == followPlayer then
+						stopFollow()
+					end
+				end))
+				ChatCommand:Clean(entitylib.Events.EntityAdded:Connect(function(entity)
+					if entity.Player and entity.Player == viewPlayer then
+						gameCamera.CameraSubject = entity.Humanoid
+					end
+				end))
+	
+				for _, plr in playersService:GetPlayers() do
+					trackPlayer(plr)
 				end
 	
-				if plr == followPlayer then
-					stopFollow()
-				end
-			end))
-			ChatCommand:Clean(entitylib.Events.EntityAdded:Connect(function(entity)
-				if entity.Player and entity.Player == viewPlayer then
-					gameCamera.CameraSubject = entity.Humanoid
-				end
-			end))
+				ChatCommand:Clean(playersService.PlayerAdded:Connect(trackPlayer))
+				ChatCommand:Clean(function()
+					for _, connection in sharedConnections do
+						connection:Disconnect()
+					end
 	
-			for _, plr in playersService:GetPlayers() do
-				trackPlayer(plr)
+					table.clear(sharedConnections)
+				end)
+				ChatCommand:Clean(lplr.Chatted:Connect(onChatted))
 			end
-	
-			ChatCommand:Clean(playersService.PlayerAdded:Connect(trackPlayer))
-			ChatCommand:Clean(function()
-				for _, connection in sharedConnections do
-					connection:Disconnect()
-				end
-	
-				table.clear(sharedConnections)
-			end)
-			ChatCommand:Clean(lplr.Chatted:Connect(onChatted))
 		end,
 		Tooltip = 'Chat commands, every command is a toggleable option'
 	})
@@ -8604,8 +8641,8 @@ run(function()
 	})
 	Sort = ServerHop:CreateDropdown({
 		Name = 'Sort',
-		List = {'Descending', 'Ascending'},
-		Tooltip = 'Descending - Prefers full servers\nAscending - Prefers empty servers'
+		List = {'Descending', 'Ascending', 'Best Ping'},
+		Tooltip = 'Descending - Prefers full servers\nAscending - Prefers empty servers\nBest Ping - Prefers the lowest ping server'
 	})
 	ServerHop:CreateButton({
 		Name = 'Rejoin Previous Server',
