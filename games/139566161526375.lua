@@ -127,7 +127,7 @@ run(function()
 		end,
 		Tooltip = 'Automatically clicks for you'
 	})
-	CPS = AutoClicker:CreateTwoSlider({
+	CPS = AutoClicker:CreateRangeSlider({
 		Name = 'CPS',
 		Min = 1,
 		Max = 20,
@@ -426,7 +426,7 @@ run(function()
 		Tooltip = 'Attack players around you\nwithout aiming at them.'
 	})
 	Targets = Killaura:CreateTargets({Players = true})
-	CPS = Killaura:CreateTwoSlider({
+	CPS = Killaura:CreateRangeSlider({
 		Name = 'Attacks per Second',
 		Min = 1,
 		Max = 20,
@@ -661,22 +661,22 @@ run(function()
 	
 	local function aimFunction(...)
 		local plr = entitylib.EntityMouse({
-	        Range = FOV.Value,
-	        Part = 'RootPart',
-	        Players = true
-	    })
+			Range = FOV.Value,
+			Part = 'RootPart',
+			Players = true
+		})
 	
-	    if plr then
-	        rayCheck.FilterDescendantsInstances = {plr.Character, gameCamera}
-	        rayCheck.CollisionGroup = plr[TargetPart.Value].CollisionGroup
-	        local offsetpos = entitylib.character.Head.CFrame
-	        local calc = prediction.SolveTrajectory(offsetpos.Position, 180, 60, plr[TargetPart.Value].Position, plr[TargetPart.Value].Velocity, workspace.Gravity, plr.HipHeight, nil, rayCheck)
+		if plr then
+			rayCheck.FilterDescendantsInstances = {plr.Character, gameCamera}
+			rayCheck.CollisionGroup = plr[TargetPart.Value].CollisionGroup
+			local offsetpos = entitylib.character.Head.CFrame
+			local calc = prediction.SolveTrajectory(offsetpos.Position, 180, 60, plr[TargetPart.Value].Position, plr[TargetPart.Value].Velocity, workspace.Gravity, plr.HipHeight, nil, rayCheck)
 	
-	        if calc then
-	            targetinfo.Targets[plr] = os.clock() + 1
-	            return offsetpos.Position + CFrame.new(offsetpos.Position, calc).LookVector * 100
-	        end
-	    end
+			if calc then
+				targetinfo.Targets[plr] = os.clock() + 1
+				return offsetpos.Position + CFrame.new(offsetpos.Position, calc).LookVector * 100
+			end
+		end
 	
 		return old(...)
 	end
@@ -689,7 +689,7 @@ run(function()
 					return aimFunction(...)
 				end)
 			else
-	            hookfunction(debug.getupvalue(bd.BowClient.Start, 11), old)
+				hookfunction(debug.getupvalue(bd.BowClient.Start, 11), old)
 				old = nil
 			end
 		end,

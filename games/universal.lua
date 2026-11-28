@@ -701,7 +701,7 @@ run(function()
 			end)
 
 			local localizationService = game:GetService('LocalizationService')
-			local root = game:GetService('CorePackages').Workspace.Packages._Index.NotificationModalsManager.NotificationModalsManager
+			local root = game:GetService('CorePackages').Workspace.Packages._Index.NotificationModalsManager
 			local reactBlox = getrenv().require(root.ReactRoblox)
 			local react = getrenv().require(root.React)
 			local UIBlox = getrenv().require(root.UIBlox)
@@ -1404,7 +1404,7 @@ run(function()
 		List = {'Tool', 'Click', 'RightClick'},
 		Tooltip = 'Tool - Automatically uses roblox tools (eg. swords)\nClick - Left click\nRightClick - Right click'
 	})
-	CPS = AutoClicker:CreateTwoSlider({
+	CPS = AutoClicker:CreateRangeSlider({
 		Name = 'CPS',
 		Min = 1,
 		Max = 20,
@@ -2949,9 +2949,12 @@ end)
 
 run(function()
 	local Invisible
+	local Dynamic
 	local oldcf
 	local animtrack
 	local proper = true
+	local params = RaycastParams.new()
+	params.RespectCanCollide = true
 	
 	local function animationTrickery()
 		if entitylib.isAlive then
@@ -2989,15 +2992,39 @@ run(function()
 				end)
 	
 				Invisible:Clean(runService.Heartbeat:Connect(function(dt)
-					if entitylib.isAlive then
-						local isR15 = entitylib.character.Humanoid.RigType == Enum.HumanoidRigType.R15
-						local root = entitylib.character.RootPart
-						local cf = root.CFrame - Vector3.new(0, entitylib.character.Humanoid.HipHeight + (root.Size.Y / 2) - 1, 0)
-						oldcf = root.CFrame
+					task.defer(function()
+						if entitylib.isAlive then
+							local hum = entitylib.character.Humanoid
+							local root = entitylib.character.RootPart
+							local isR15 = hum.RigType == Enum.HumanoidRigType.R15
+							local offset = isR15 and hum.HipHeight + (root.Size.Y / 2) or 0
 	
-						root.CFrame = cf * CFrame.Angles(math.rad(isR15 and 180 or 90), 0, 0)
-						animtrack:AdjustWeight(100)
-					end
+							if hum.Sit then
+								oldcf = nil
+								return
+							end
+	
+							if isR15 then
+								if Dynamic.Enabled then
+									params.FilterDescendantsInstances = {lplr.Character, gameCamera}
+									params.CollisionGroup = root.CollisionGroup
+	
+									local ray = workspace:Blockcast(root.CFrame, Vector3.new(2, 0.1, 1), Vector3.new(0, -offset, 0), params)
+									if ray then
+										offset = (root.Position.Y - ray.Position.Y) - 1
+									else
+										offset = 0
+									end
+								else
+									offset -= 1
+								end
+							end
+	
+							oldcf = root.CFrame
+							root.CFrame = (root.CFrame - Vector3.new(0, offset, 0)) * CFrame.Angles(math.rad(isR15 and 180 or 90), 0, 0)
+							animtrack:AdjustWeight(100)
+						end
+					end)
 				end))
 	
 				Invisible:Clean(entitylib.Events.LocalAdded:Connect(function(char)
@@ -3020,6 +3047,11 @@ run(function()
 			end
 		end,
 		Tooltip = 'Turns you invisible using animations.'
+	})
+	Dynamic = Invisible:CreateToggle({
+		Name = 'Dynamic',
+		Tooltip = 'Dynamically adjust your position to be as close to the ground as possible.',
+		Default = true
 	})
 end)
 
@@ -4848,7 +4880,7 @@ run(function()
 			DistanceLimit.Object.Visible = callback
 		end
 	})
-	DistanceLimit = ESP:CreateTwoSlider({
+	DistanceLimit = ESP:CreateRangeSlider({
 		Name = 'Player Distance',
 		Min = 0,
 		Max = 256,
@@ -5679,7 +5711,7 @@ run(function()
 			DistanceLimit.Object.Visible = callback
 		end
 	})
-	DistanceLimit = NameTags:CreateTwoSlider({
+	DistanceLimit = NameTags:CreateRangeSlider({
 		Name = 'Player Distance',
 		Min = 0,
 		Max = 256,
@@ -6206,6 +6238,7 @@ run(function()
 	local Radar
 	local Targets
 	local DotStyle
+	local Scale
 	local PlayerColor
 	local Clamp
 	local Reference = {}
@@ -6260,21 +6293,24 @@ run(function()
 					end
 					Added(entity)
 				end
+	
 				Radar:Clean(entitylib.Events.EntityAdded:Connect(function(entity)
 					if Reference[entity] then
 						Removed(entity)
 					end
 					Added(entity)
 				end))
+	
 				Radar:Clean(vape.Categories.Friends.ColorUpdate.Event:Connect(function()
 					for entity, dot in Reference do
 						dot.BackgroundColor3 = entitylib.getEntityColor(entity) or Color3.fromHSV(PlayerColor.Hue, PlayerColor.Sat, PlayerColor.Value)
 					end
 				end))
+	
 				Radar:Clean(runService.RenderStepped:Connect(function()
 					for entity, dot in Reference do
 						if entitylib.isAlive then
-							local dt = CFrame.lookAlong(entitylib.character.RootPart.Position, gameCamera.CFrame.LookVector * Vector3.new(1, 0, 1)):PointToObjectSpace(entity.RootPart.Position)
+							local dt = CFrame.lookAlong(entitylib.character.RootPart.Position, gameCamera.CFrame.LookVector * Vector3.new(1, 0, 1)):PointToObjectSpace(entity.RootPart.Position) * Scale.Value
 							dot.Position = UDim2.fromOffset(Clamp.Enabled and math.clamp(108 + dt.X, 2, 214) or 108 + dt.X, Clamp.Enabled and math.clamp(108 + dt.Z, 8, 214) or 108 + dt.Z)
 						end
 					end
@@ -6303,6 +6339,13 @@ run(function()
 				dot.UICorner.CornerRadius = UDim.new(val == 'Circles' and 1 or 0, 0)
 			end
 		end
+	})
+	Scale = Radar:CreateSlider({
+		Name = 'Scale',
+		Min = 0,
+		Max = 2,
+		Default = 1,
+		Decimal = 10
 	})
 	PlayerColor = Radar:CreateColorSlider({
 		Name = 'Player Color',
@@ -7492,7 +7535,7 @@ run(function()
 			DistanceLimit.Object.Visible = callback
 		end
 	})
-	DistanceLimit = Tracers:CreateTwoSlider({
+	DistanceLimit = Tracers:CreateRangeSlider({
 		Name = 'Player Distance',
 		Min = 0,
 		Max = 256,
@@ -10084,6 +10127,75 @@ run(function()
 	local corner = Instance.new('UICorner')
 	corner.CornerRadius = UDim.new(0, 4)
 	corner.Parent = label
+end)
+
+run(function()
+	local GameTheme
+	local Mode
+	local Modes = {
+		Winter = function()
+			local part = Instance.new('Part')
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CastShadow = false
+			part.Size = Vector3.one * 200
+			part.Transparency = 1
+			part.Parent = workspace
+			local particleemitter = Instance.new('ParticleEmitter')
+			particleemitter.Acceleration = Vector3.new(0, -4, 0)
+			particleemitter.EmissionDirection = Enum.NormalId.Bottom
+			particleemitter.LightEmission = 1
+			particleemitter.LightInfluence = 1
+			particleemitter.Rate = 400
+			particleemitter.RotSpeed = NumberRange.new(6, 12)
+			particleemitter.Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.75, 0.3),
+				NumberSequenceKeypoint.new(1, 0.75, 0.3)
+			})
+			particleemitter.Parent = part
+	
+			local oldSettings = {lightingService.Ambient, lightingService.EnvironmentDiffuseScale, lightingService.EnvironmentSpecularScale, lightingService.FogEnd}
+			lightingService.Ambient = Color3.fromRGB(0, 242, 255)
+			lightingService.EnvironmentDiffuseScale = 0
+			lightingService.EnvironmentSpecularScale = 0
+			lightingService.FogEnd = 900
+	
+			GameTheme:Clean(part)
+			GameTheme:Clean(runService.RenderStepped:Connect(function()
+				if entitylib.isAlive then
+					part.CFrame = CFrame.new(entitylib.character.RootPart.Position)
+				end
+			end))
+	
+			GameTheme:Clean(function()
+				lightingService.Ambient = oldSettings[1]
+				lightingService.EnvironmentDiffuseScale = oldSettings[2]
+				lightingService.EnvironmentSpecularScale = oldSettings[3]
+				lightingService.FogEnd = oldSettings[4]
+			end)
+		end
+	}
+	
+	GameTheme = vape.Legit:CreateModule({
+		Name = 'GameTheme',
+		Function = function(callback)
+			if callback then
+				Modes[Mode.Value]()
+			end
+		end,
+		Tooltip = 'funny'
+	})
+	Mode = GameTheme:CreateDropdown({
+		Name = 'Mode',
+		List = {'Winter'},
+		Function = function()
+			if GameTheme.Enabled then
+				GameTheme:Toggle()
+				GameTheme:Toggle()
+			end
+		end
+	})
 end)
 
 run(function()

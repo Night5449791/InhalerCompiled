@@ -1416,7 +1416,7 @@ run(function()
 		end,
 		Tooltip = 'Hold attack button to automatically click'
 	})
-	CPS = AutoClicker:CreateTwoSlider({
+	CPS = AutoClicker:CreateRangeSlider({
 		Name = 'CPS',
 		Min = 1,
 		Max = 9,
@@ -1432,7 +1432,7 @@ run(function()
 			end
 		end
 	})
-	BlockCPS = AutoClicker:CreateTwoSlider({
+	BlockCPS = AutoClicker:CreateRangeSlider({
 		Name = 'Block CPS',
 		Min = 1,
 		Max = 12,
@@ -1570,7 +1570,7 @@ run(function()
 		end,
 		Tooltip = 'Automatically swings when hovering over a entity'
 	})
-	CPS = TriggerBot:CreateTwoSlider({
+	CPS = TriggerBot:CreateRangeSlider({
 		Name = 'CPS',
 		Min = 1,
 		Max = 9,
@@ -3785,7 +3785,7 @@ run(function()
 			DistanceLimit.Object.Visible = callback
 		end
 	})
-	DistanceLimit = NameTags:CreateTwoSlider({
+	DistanceLimit = NameTags:CreateRangeSlider({
 		Name = 'Player Distance',
 		Min = 0,
 		Max = 256,
@@ -7396,16 +7396,16 @@ run(function()
 		Name = 'Bed Break Effect',
 		Function = function(callback)
 			if callback then
-	            BedBreakEffect:Clean(vapeEvents.BedwarsBedBreak.Event:Connect(function(data)
-	                firesignal(bedwars.Client:Get('BedBreakEffectTriggered').instance.OnClientEvent, {
-	                    player = data.player,
-	                    position = data.bedBlockPosition * 3,
-	                    effectType = NameToId[List.Value],
-	                    teamId = data.brokenBedTeam.id,
-	                    centerBedPosition = data.bedBlockPosition * 3
-	                })
-	            end))
-	        end
+				BedBreakEffect:Clean(vapeEvents.BedwarsBedBreak.Event:Connect(function(data)
+					firesignal(bedwars.Client:Get('BedBreakEffectTriggered').instance.OnClientEvent, {
+						player = data.player,
+						position = data.bedBlockPosition * 3,
+						effectType = NameToId[List.Value],
+						teamId = data.brokenBedTeam.id,
+						centerBedPosition = data.bedBlockPosition * 3
+					})
+				end))
+			end
 		end,
 		Tooltip = 'Custom bed break effects'
 	})
